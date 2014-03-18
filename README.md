@@ -15,7 +15,7 @@ This module provides some convenient functions to process the data contained in 
     tgdx = gp.gdxfile(gdxpath)
     # 3 ways of loading symbols into Pandas data structures
     a = tgdx.a()
-    b = gp.gdxsymb('b', tgdx).populate()
+    b = gp.gdxsymb('b', tgdx).get_values()
     gp.loadsymbols('c', gdxpath)
     # Now a, b, c can be used for calculations/plotting
 
