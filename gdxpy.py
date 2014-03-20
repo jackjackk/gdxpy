@@ -93,7 +93,7 @@ class gdxfile:
     def query_symbol(self, name, reshape=True):
         fname, fext = os.path.splitext(self.internal_filename)
         if fext =='.gdx':
-            cmdline = r'gdxdump.exe {0} symb={1} Format=csv'.format(self.internal_filename, name)
+            cmdline = r'gdxdump.exe {0} symb={1} Format=csv NoHeader'.format(self.internal_filename, name)
             # cmdline = r'gdxdump.exe {0} symb={1} NoHeader Format=csv'.format(self.internal_filename, name)
             p = subprocess.Popen(cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
             # p = subprocess.Popen(cmdline +' | tr "[:upper:]" "[:lower:]"', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -118,10 +118,11 @@ class gdxfile:
         #     prevpos = csvfile.pos
         # if not datafound:
         #     raise Exception(strdata)
+        #print strdata[:500]
         try:
-            df = pd.read_csv(csvfile,sep=sepchar,quotechar='"',prefix='s',header=1,error_bad_lines=False).dropna()
+            df = pd.read_csv(csvfile,sep=sepchar,quotechar='"',prefix='s',header=None,error_bad_lines=False).dropna()
         except:
-            print 'try to go on'
+            pass #print 'try to go on'
         #print df.columns.values
         #print df.columns.values[-1], list(df.columns.values[:-2]), df.columns.values[-2]
         #print df
@@ -131,7 +132,7 @@ class gdxfile:
             if reshape and (ncols>3):
                 df = convert_pivottable_to_panel(df)
         else:
-            df = df.s0
+            df = df[df.columns.values[0]]
         self.data = df
         return df
 
