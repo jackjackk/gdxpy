@@ -21,6 +21,7 @@ def get_gams_root():
         gamsRoot = os.path.join(gamsRoot, winver)
         gamsver = os.walk(gamsRoot).next()[1][-1]
         gamsDir =  os.path.join(gamsRoot, gamsver)
+    print 'Using "%s"' % gamsDir
     return gamsDir
 
 def install_gams_binding():
@@ -142,7 +143,7 @@ class gdxfile:
             gdxHandle = gdxcc.new_gdxHandle_tp()
             if gamsDir == None:
                 gamsDir = get_gams_root()
-            rc = gdxcc.gdxCreateD(gdxHandle, gamsDir, gdxcc.GMS_SSSIZE)
+            rc = gdxcc.gdxCreateD(gdxHandle, str(gamsDir), gdxcc.GMS_SSSIZE)
             assert rc[0],rc[1]
             assert gdxcc.gdxOpenRead(gdxHandle, self.internal_filename)[0]
             ret, symNr = gdxcc.gdxFindSymbol(gdxHandle, name)

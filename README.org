@@ -5,12 +5,12 @@
 This module provides some convenient functions to process the data contained in a GAMS Data eXchange file (GDX). A GDX stores the values of one or more GAMS symbols, such as sets, parameters variables and equations. With this module, one can load and manipulate GDX symbols as Pandas data structures.
 
 * Requirements
-1. Either one of the two:
-  - Python GDX API binding installed.
-    This is the faster and preferred method. You can use ~gdxpy.install_gams_binding()~ from a console with enough privileges for performing the installation job.
-  - ~gdxdump~ path in the shell PATH environment variable.
-    This method is slower, and requires change the code to use fallback2csv by default
-2. [[http://pandas.pydata.org/][pandas]] library (for Python data analysis) installed.
+- Either one of the two:
+  1. Python GDX API binding installed.
+     This is the faster and preferred method. You can use ~gdxpy.install_gams_binding()~ from a console with enough privileges for performing the installation job.
+  2. ~gdxdump~ path in the shell PATH environment variable.
+     This method is slower, and requires change the code to use fallback2csv by default
+- [[http://pandas.pydata.org/][pandas]] library (for Python data analysis) installed.
    Make sure you have an up-to-date version at [[http://pandas.pydata.org/]]
 
 * Usage
