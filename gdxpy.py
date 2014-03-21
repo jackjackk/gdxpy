@@ -25,10 +25,13 @@ def get_gams_root():
 
 def install_gams_binding():
     gamsDir = get_gams_root()
-    cmdline = 'cmd /c cd "%s" && python setup.py install' % os.path.join(gamsDir,'apifiles','Python','api')
+    import distutils.sysconfig
+    pkgDir = distutils.sysconfig.get_python_lib()
+    cmdline = 'cd {0} && python gdxsetup.py build --compiler=mingw32 && cd build\lib.w* && copy *.* {1} && if exist {2} (del {2}) else (echo .)'.format(os.path.join(gamsDir,'apifiles','Python','api'),
+                                                                                                                                          pkgDir, os.path.join(pkgDir,'gdxcc.pyc'))
+    print 'A shell will be opened and the following command will be executed:'
     print cmdline
-    print subprocess.Popen(cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False).communicate()[0]
-    
+    os.system('start cmd /k "echo Close all ipython instances && pause && %s && pause && exit' % cmdline)
     
 def print_traceback(e):
     traceback_template = '''Traceback (most recent call last):
@@ -36,12 +39,14 @@ File "%(filename)s", line %(lineno)s, in %(name)s
 %(type)s: %(message)s\n'''
     exc_type, exc_value, exc_traceback = sys.exc_info()
     traceback_details = {
-        'filename': exc_traceback.tb_frame.f_code.co_filename,
+        'filename': os.path.split(exc_traceback.tb_frame.f_code.co_filename)[1],
         'lineno'  : exc_traceback.tb_lineno,
         'name'    : exc_traceback.tb_frame.f_code.co_name,
         'type'    : exc_type.__name__,
         'message' : exc_value.message, # or see traceback._some_str()
     }
+    print "%(type)s : %(message)s [%(filename)s.%(lineno)d]" % traceback_details
+    return
     print traceback_template % traceback_details
     exc_type, exc_obj, exc_tb = sys.exc_info()
     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -137,7 +142,6 @@ class gdxfile:
             gdxHandle = gdxcc.new_gdxHandle_tp()
             if gamsDir == None:
                 gamsDir = get_gams_root()
-            gamsDir = r'C:\GAMS\win64\23.8'
             rc = gdxcc.gdxCreateD(gdxHandle, gamsDir, gdxcc.GMS_SSSIZE)
             assert rc[0],rc[1]
             assert gdxcc.gdxOpenRead(gdxHandle, self.internal_filename)[0]
@@ -193,7 +197,7 @@ class gdxfile:
                 #print strdata[:500]
                 df = pd.read_csv(csvfile,sep=sepchar,quotechar='"',prefix='s',header=None,error_bad_lines=False).dropna()
             else:
-                raise e
+                raise e,  None, sys.exc_info()[2]
 
         #print_traceback(e)
         #print df.columns.values
@@ -243,7 +247,9 @@ def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_unders
                   try:
                       sdata_curr = gdxsymb(s,g).get_values(filt=filt)
                   except Exception as e:
-                      print 'WARNING: Missing "%s" from "%s"' % (s,gid)
+                      traceback.print_exc()
+                      #print_traceback(e)
+                      #print 'WARNING: Missing "%s" from "%s"' % (s,gid)
                       continue
                   validgdxs.append(gid)
                   nax = len(sdata_curr.axes)
