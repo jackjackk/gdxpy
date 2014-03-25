@@ -5,16 +5,18 @@
 This module provides some convenient functions to process the data contained in a GAMS Data eXchange file (GDX). A GDX stores the values of one or more GAMS symbols, such as sets, parameters variables and equations. With this module, one can load and manipulate GDX symbols as Pandas data structures.
 
 * Requirements
+- Windows (tested only on Windows 7/8 - 64bit).
+- Python (tested only with  ~%PYVERSION%~ = 2.7, ~%ARCH%~ = 32bit).
+- up-to-date [[http://www.numpy.org/%E2%80%8E][numpy]] module (tested only with numpy 1.8.0).
+- up-to-date [[http://pandas.pydata.org/][pandas]] module (tested only with pandas 0.13.1).
+- GAMS installation with the same ~%ARCH%~ of Python (e.g. 32bit Python will work with 32bit GAMS).
+- An environment variable  ~GAMSDIR~ pointing to the path of the latter. If not set, it will be assumed to be equal to the path of the last subfolder under ~C:/GAMS/win%ARCH%~.
 - Either one of the two:
-  1. Python GDX API binding installed.
-     This is the faster and preferred method. You can use ~gdxpy.install_gams_binding()~ from a console with enough privileges for performing the installation job.
-  2. ~gdxdump~ path in the shell PATH environment variable.
-     This method is slower, and requires change the code to use fallback2csv by default
-- [[http://pandas.pydata.org/][pandas]] library (for Python data analysis) installed.
-   Make sure you have an up-to-date version at [[http://pandas.pydata.org/]]
-
+  1. ~gdxcc.py~ in ~%GAMSDIR%/apifiles/Python/api/build/win%ARCH%-%PYVERSION%~. This is the faster and
+     preferred method. You can use ~gdxpy.install_gams_binding()~ for assistance in the installation.
+  2. ~gdxdump~ in one of the paths of the ~PATH~ environment variable.
+     This method is slower, and will be active if ~gdxcc.py~ cannot be loaded.
 * Usage
-
 #+BEGIN_SRC python
   # Import the module
   import gdxpy as gp

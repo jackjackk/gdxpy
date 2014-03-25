@@ -8,33 +8,77 @@ import os
 import traceback
 import numpy as np
 
+GDX_MODE_API, GDX_MODE_SHELL = range(2)
+gdxcc = None
+__gdxpy_winver__ = None
+__gdxpy_gamsdir__ = None
+__gdxpy_apidir__ = None
+__gdxpy_gdxccdir__ = None
+__gdxpy_mode__ = None
+
+def get_winver():
+    if sys.maxsize == 2147483647:
+        winver = 'win32'
+    else:
+        winver = 'win64'
+    return winver
+
 def get_gams_root():
     try:
-        import enviropy
-        gamsDir = (enviropy.getEnvironmentVariable('GAMSDIR').split(';'))[0]
+        gamsdir = os.environ['GAMSDIR'].split(';')[0]
+        if not __gdxpy_winver__ in gamsdir:
+            raise Exception('GAMSDIR environment variable does not refer to a %s GAMS installation' % __gdxpy_winver__)
+        if not os.path.isdir(gamsdir):
+            raise Exception('"%s" is not a valid GAMS dir')
     except:
-        gamsRoot = r'C:\GAMS'
+        gamsRoot = os.path.join(r'C:\GAMS',__gdxpy_winver__)
         try:
-            winver = os.walk(gamsRoot).next()[1][-1]
+            gamsver = os.walk(gamsRoot).next()[1][-1]
         except:
-            raise Exception('Unable to find GAMS dir')
-        gamsRoot = os.path.join(gamsRoot, winver)
-        gamsver = os.walk(gamsRoot).next()[1][-1]
-        gamsDir =  os.path.join(gamsRoot, gamsver)
-    print 'Using "%s"' % gamsDir
-    return gamsDir
+            raise Exception('Unable to find any valid %s GAMS installation' % __gdxpy_winver__)
+        gamsdir =  os.path.join(gamsRoot, gamsver)
+    return gamsdir
+
+def load_gams_binding():
+    global gdxcc
+    global __gdxpy_winver__
+    global __gdxpy_gamsdir__
+    global __gdxpy_apidir__
+    global __gdxpy_gdxccdir__
+    global __gdxpy_mode__
+    try:
+        __gdxpy_winver__ = get_winver()
+        __gdxpy_gamsdir__ = get_gams_root()
+        __gdxpy_apidir__ =  os.path.join(__gdxpy_gamsdir__,'apifiles','Python','api')
+        __gdxpy_gdxccdir__ =  os.path.join(__gdxpy_apidir__,'build',
+                                           'lib.{0}-{1}.{2}'.format(__gdxpy_winver__,sys.version_info[0],sys.version_info[1]))
+        if not os.path.isdir(__gdxpy_gdxccdir__):
+            print 'Please compile the GDX bindings at path "%s" (e.g. by calling install_gams_binding())' % __gdxpy_gdxccdir__
+            raise Exception('GDX Bindings missing')
+        if __gdxpy_gdxccdir__ not in sys.path:
+            sys.path.insert(0,__gdxpy_gdxccdir__)
+        print 'Using gdxcc from %s' % __gdxpy_gdxccdir__
+        import gdxcc as local_gdxcc
+        gdxcc = local_gdxcc
+        __gdxpy_mode__ = GDX_MODE_API
+    except:
+        print 'Module gdxcc not found: GDX shell mode will be used'
+        __gdxpy_mode__ = GDX_MODE_SHELL
 
 def install_gams_binding():
-    gamsDir = get_gams_root()
-    import distutils.sysconfig
-    pkgDir = distutils.sysconfig.get_python_lib()
-    cmdline = 'cd {0} && python gdxsetup.py build --compiler=mingw32 && cd build\lib.w* && copy *.* {1} && if exist {2} (del {2}) else (echo .)'.format(os.path.join(gamsDir,'apifiles','Python','api'),
-                                                                                                                                          pkgDir, os.path.join(pkgDir,'gdxcc.pyc'))
+    #import distutils.sysconfig
+    #pkgDir = distutils.sysconfig.get_python_lib()
+    #cmdline = 'cd {0} && if exist build (rmdir /S build) else (echo .) && python gdxsetup.py build --compiler=mingw32 && cd build\lib.w* && copy *.* {1} && if exist {2} (del {2}) else (echo .)'.format(os.path.join(gamsdir,'apifiles','Python','api'),
+    #                                                                                                                                      pkgDir, os.path.join(pkgDir,'gdxcc.pyc'))
+    cmdline = '{0} && cd {1} && python gdxsetup.py clean --all && python gdxsetup.py build --compiler=mingw32'.format(__gdxpy_apidir__[:2],__gdxpy_apidir__)
     print 'A shell will be opened and the following command will be executed:'
     print cmdline
+                                     
     os.system('start cmd /k "echo Close all ipython instances && pause && %s && pause && exit' % cmdline)
-    
+
 def print_traceback(e):
+    traceback.print_exc()
+    return
     traceback_template = '''Traceback (most recent call last):
 File "%(filename)s", line %(lineno)s, in %(name)s
 %(type)s: %(message)s\n'''
@@ -96,62 +140,147 @@ class gdxsymb:
     """
     Represents a GDX symbol.
     """
-    def __init__(self, name, gdxsource, dim=None, stype=None, sdesc=None):
-        self.name = name
-        if not isinstance(gdxsource,gdxfile):
-            gdxsource = gdxfile(gdxsource)
-        self.gdxsource = gdxsource
-        self.dim = dim
-        self.stype = stype
-        self.desc = sdesc
+    def __init__(self, gdx, sinfo=None, name=None, dim=None, stype=None, desc=None):
+        self.gdx = gdx
+        self.values = None
+        self.filtered = False
+        if sinfo != None:
+            self.name = sinfo['name']
+            self.dim = sinfo['dim']
+            self.stype = sinfo['stype']
+            self.desc = sinfo['desc']
+        if name != None:
+            self.name = name
+        if dim != None:
+            self.dim = dim
+        if stype != None:
+            self.stype = stype
+        if desc != None:
+            self.desc = desc
 
     def __repr__(self):
         return '({0}) {1}'.format(self.stype,self.desc)
 
     def get_values(self,reshape=True,filt=None):
-        return self.gdxsource.query_symbol(self.name,reshape=reshape,filt=filt)
+        try:
+            axs = self.values.axes
+            assert not self.filtered, 'If was loaded filtered before, need for reload from source' 
+            ret = self.values
+            if filt != None:
+                bfound = False
+                for iax, ax in enumerate(axs):
+                    for x in ax:
+                        if filt == x:
+                            bfound = True
+                            break
+                if not bfound:
+                    raise Exception('Element "%s" not found' % str(filt))
+                ret = self.values.xs(filt,axis=iax)
+        except:
+            ret = self.gdx.query(self.name,reshape=reshape,filt=filt)
+            self.values = ret
+            self.filtered = (filt != None)
 
-    def __call__(self):
-        return self.get_values()
+        return ret
 
+    def __call__(self,filt=None):
+        return self.get_values(filt=filt)
 
 class gdxfile:
     """
     Represents a GDX file.
     """
-    def __init__(self, filename=None):
+
+    def __init__(self, filename=None,gamsdir=None):
+        global __gdxpy_mode__
+        # Check filename
         if filename == None:
            raise Exception('No GDX provided') 
         self.internal_filename = filename
         if not os.access(filename, os.R_OK):
             raise Exception('GDX "%s" not found or readable' % filename)
-        cmdline = r'gdxdump.exe {0} Symbols'.format(self.internal_filename)
-        symbspeclist = StringIO.StringIO(subprocess.Popen(cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True).communicate()[0])
-        for symbspec in symbspeclist:
-            m_obj = re.search(r"^\s+(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(.*)$", symbspec)
-            if m_obj != None:
-                sid = m_obj.group(1)
-                sname = m_obj.group(2).lower()
-                sdim = m_obj.group(3)
-                stype = m_obj.group(4)
-                sdesc = m_obj.group(5).strip()
-                setattr(self, sname, gdxsymb(sname,self,sdim,stype,sdesc))
+        # Identify access mode (through gdxcc API or shell)
+        if __gdxpy_mode__ == GDX_MODE_API:
+            try:
+                self.gdxHandle = gdxcc.new_gdxHandle_tp()
+                rc = gdxcc.gdxCreateD(self.gdxHandle, __gdxpy_gamsdir__, gdxcc.GMS_SSSIZE)
+                assert rc[0],rc[1]
+                assert gdxcc.gdxOpenRead(self.gdxHandle, self.internal_filename)[0]
+            except Exception as e:
+                print_traceback(e)
+                print "GDX API NOT WORKING: FALLING BACK TO GDX SHELL MODE"
+                __gdxpy_mode__ = GDX_MODE_SHELL
+        # Access symbols as class members
+        #for symb in self.get_symbols_list():
+        for symb in self.get_symbols_list():
+            setattr(self, symb.name.lower(), symb)
+        #self.symbols = self.get_symbols_list()
 
-    def query_symbol(self, name, reshape=True, gamsDir=None, filt=None, fallback2csv=False):
-        try:
-            import gdxcc
-            gdxHandle = gdxcc.new_gdxHandle_tp()
-            if gamsDir == None:
-                gamsDir = get_gams_root()
-            rc = gdxcc.gdxCreateD(gdxHandle, str(gamsDir), gdxcc.GMS_SSSIZE)
-            assert rc[0],rc[1]
-            assert gdxcc.gdxOpenRead(gdxHandle, self.internal_filename)[0]
+    def close(self):
+        h = self.gdxHandle
+        gdxcc.gdxClose(h)
+        gdxcc.gdxFree(h)
+        
+    def __del__(self):
+        self.close()
+
+    def get_sid_info(self,j):
+        if __gdxpy_mode__ != GDX_MODE_API:
+            raise Exception('Function "get_sid_info" not available outside GDX API mode')
+        h = self.gdxHandle
+        r, name, dims, stype = gdxcc.gdxSymbolInfo(h, j)
+        assert r, '%d is not a valid symbol number' % j
+        r, records, userinfo, description = gdxcc.gdxSymbolInfoX(h, j)
+        assert r, '%d is not a valid symbol number' % j
+        return {'name':name, 'stype':stype, 'desc':'', 'dim':dims}
+
+    def get_symbols_list(self):
+        slist = []
+        if __gdxpy_mode__ == GDX_MODE_API:
+            rc, nSymb, nElem = gdxcc.gdxSystemInfo(self.gdxHandle)
+            assert rc, 'Unable to retrieve "%s" info' % self.filename
+            self.number_symbols = nSymb
+            self.number_elements = nElem
+            slist = [None]*(nSymb+1)
+            for j in range(0,nSymb+1):
+                sinfo = self.get_sid_info(j)
+                if j==0:
+                    sinfo['name'] = 'u'
+                slist[j] = gdxsymb(self,sinfo)
+        elif __gdxpy_mode__ == GDX_MODE_SHELL:
+            cmdline = r'gdxdump.exe {0} Symbols'.format(self.internal_filename)
+            symbspeclist = StringIO.StringIO(subprocess.Popen(cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True).communicate()[0])
+            for symbspec in symbspeclist:
+                m_obj = re.search(r"^\s+(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(.*)$", symbspec)
+                if m_obj != None:
+                    sid = m_obj.group(1)
+                    sinfo = {
+                        'name': m_obj.group(2),
+                        'dim': m_obj.group(3),
+                        'stype': m_obj.group(4),
+                        'desc' : m_obj.group(5).strip() }
+                    slist.append(gdxsymb(self,sinfo))
+        else:
+            raise Exception('Function "get_symbols_list" not available outside GDX API/SHELL mode')
+        return slist
+        
+    def has_symbol(self,name):
+        if __gdxpy_mode__ != GDX_MODE_API:
+            raise Exception('Function "get_sid_info" not available outside GDX API mode')
+        ret, symNr = gdxcc.gdxFindSymbol(self.gdxHandle, name)
+        return ret
+
+    def query(self, name, reshape=True, gamsdir=None, filt=None):
+        if __gdxpy_mode__ == GDX_MODE_API:
+            gdxHandle = self.gdxHandle
             ret, symNr = gdxcc.gdxFindSymbol(gdxHandle, name)
-            assert ret, "Symbol '%s' not found" % name
-            ret, symName, dim, symType = gdxcc.gdxSymbolInfo(gdxHandle, symNr)
+            assert ret, "Symbol '%s' not found in GDX '%s'" % (name,self.internal_filename)
+            sinfo = self.get_sid_info(symNr)
+            dim = sinfo['dim']
+            symType = sinfo['stype']
             ret, nrRecs = gdxcc.gdxDataReadStrStart(gdxHandle, symNr)
             assert ret, "Error in gdxDataReadStrStart: "+gdxcc.gdxErrorStr(gdxHandle,gdxGetLastError(gdxHandle))[1]
-           
+            
             ifilt = None
             vtable = []
             rcounter = 0
@@ -174,8 +303,6 @@ class gdxfile:
                 vtable.append(vrow)
                 rcounter += 1
             gdxcc.gdxDataReadDone(gdxHandle)
-            assert not gdxcc.gdxClose(gdxHandle)
-            assert gdxcc.gdxFree(gdxHandle)
             if symType == gdxcc.GMS_DT_SET:
                 ifilt = 1
             cols = ['s%d' % x for x in range(dim)]+['val',]
@@ -183,23 +310,23 @@ class gdxfile:
             df = pd.DataFrame(vtable,columns=cols)
             if ifilt != None:
                 df = df.drop(df.columns[ifilt], axis=1)
-            print "%d / %d records read from <%s>" % (rcounter, nrRecs, self.internal_filename)
+            #print "%d / %d records read from <%s>" % (rcounter, nrRecs, self.internal_filename)
 
-        except Exception as e:
-            if fallback2csv:
-                cmdline = r'gdxdump.exe {0} symb={1} Format=csv NoHeader'.format(self.internal_filename, name)
-                p = subprocess.Popen(cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
-                # TODO check for return code
-                # p = subprocess.Popen(cmdline +' | tr "[:upper:]" "[:lower:]"', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-                strdata = p.communicate()[0] #.replace("'.","',").replace(', \r\n','\r\n').replace(" ",",")
-                sepchar = ','
-                strdata = strdata.replace('eps','1e-16')
-                csvfile = StringIO.StringIO(strdata)
-                #print strdata[:500]
-                df = pd.read_csv(csvfile,sep=sepchar,quotechar='"',prefix='s',header=None,error_bad_lines=False).dropna()
-            else:
-                raise e,  None, sys.exc_info()[2]
+        elif __gdxpy_mode__ == GDX_MODE_SHELL:
+            cmdline = r'gdxdump.exe {0} symb={1} Format=csv NoHeader'.format(self.internal_filename, name)
+            p = subprocess.Popen(cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+            # TODO check for return code
+            # p = subprocess.Popen(cmdline +' | tr "[:upper:]" "[:lower:]"', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            strdata = p.communicate()[0] #.replace("'.","',").replace(', \r\n','\r\n').replace(" ",",")
+            sepchar = ','
+            strdata = strdata.replace('eps','1e-16')
+            csvfile = StringIO.StringIO(strdata)
+            #print strdata[:500]
+            df = pd.read_csv(csvfile,sep=sepchar,quotechar='"',prefix='s',header=None,error_bad_lines=False).dropna()
+        else:
+            raise Exception('Function "get_symbols_list" not available outside GDX API/SHELL mode')
 
+        #raise e,  None, sys.exc_info()[2]
         #print_traceback(e)
         #print df.columns.values
         #print df.columns.values[-1], list(df.columns.values[:-2]), df.columns.values[-2]
@@ -246,7 +373,7 @@ def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_unders
                       else:
                           gid = gdxlabels[ig]
                   try:
-                      sdata_curr = gdxsymb(s,g).get_values(filt=filt)
+                      sdata_curr = gdxfile(g).query(s,filt=filt)
                   except Exception as e:
                       traceback.print_exc()
                       #print_traceback(e)
@@ -296,3 +423,5 @@ def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_unders
             time.sleep(0.01)
 
 
+# Main initialization code
+load_gams_binding()
