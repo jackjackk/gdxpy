@@ -117,7 +117,7 @@ def convert_pivottable_to_panel(df):
         p3d_dict = {}
         for subind in df.index.levels[0]:
             try:
-                p3d_dict[subind.lower()] = df.xs([subind])
+                p3d_dict[subind] = df.xs([subind])
             except:
                 pass
         ret = pd.Panel(p3d_dict)
@@ -130,7 +130,7 @@ def convert_pivottable_to_panel(df):
                     p3d_dict[sub2ind] = df.xs([subind,sub2ind])
                 except:
                     pass
-            p4d_dict[subind.lower()] = pd.Panel(p3d_dict)
+            p4d_dict[subind] = pd.Panel(p3d_dict)
         ret = pd.Panel4D(p4d_dict)
     else:
         ret = df
@@ -307,7 +307,9 @@ class gdxfile:
                 ifilt = 1
             cols = ['s%d' % x for x in range(dim)]+['val',]
             #print vtable[:5]
+            #print cols
             df = pd.DataFrame(vtable,columns=cols)
+            #print df
             if ifilt != None:
                 df = df.drop(df.columns[ifilt], axis=1)
             #print "%d / %d records read from <%s>" % (rcounter, nrRecs, self.internal_filename)
@@ -334,6 +336,7 @@ class gdxfile:
         ncols = len(df.columns)
         if ncols>1:
             df = df.pivot_table(df.columns.values[-1],rows=list(df.columns.values[:-2]),cols=df.columns.values[-2])
+            #print df
             if reshape and (ncols>3):
                 df = convert_pivottable_to_panel(df)
         else:
@@ -341,7 +344,7 @@ class gdxfile:
         self.data = df
         return df
         
-def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True):
+def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True):
       """
       Loads into global namespace the symbols listed in {slist}
       from the GDX listed in {glist}.
@@ -386,9 +389,9 @@ def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_unders
                         sdata_curr = eval("sdata_curr.ix[%s,'l']" % ','.join([':' for x in range(nax)]))
                   sdata[gid] = sdata_curr
             nvg = len(validgdxs)
-            #if nvg == 1:
-            #      svar = sdata[validgdxs[0]]
-            if nvg >= 1:
+            if (nvg == 1) and single==True:
+                  svar = sdata[validgdxs[0]]
+            elif nvg >= 1:
                   if nax == 1:
                         svar = pd.DataFrame(sdata)
                   elif nax == 2:
