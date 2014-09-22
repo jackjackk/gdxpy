@@ -20,7 +20,7 @@ def get_winver():
     if sys.maxsize == 2147483647:
         winver = 'win32'
     else:
-        winver = 'win64'
+        winver = 'win-amd64'
     return winver
 
 def get_gams_root():
@@ -39,7 +39,7 @@ def get_gams_root():
         gamsdir =  os.path.join(gamsRoot, gamsver)
     return gamsdir
 
-def load_gams_binding():
+def load_gams_binding(gamsdir=None):
     global gdxcc
     global __gdxpy_winver__
     global __gdxpy_gamsdir__
@@ -48,7 +48,9 @@ def load_gams_binding():
     global __gdxpy_mode__
     try:
         __gdxpy_winver__ = get_winver()
-        __gdxpy_gamsdir__ = get_gams_root()
+        if gamsdir==None:
+            gamsdir = get_gams_root()
+        __gdxpy_gamsdir__ = gamsdir
         __gdxpy_apidir__ =  os.path.join(__gdxpy_gamsdir__,'apifiles','Python','api')
         __gdxpy_gdxccdir__ =  os.path.join(__gdxpy_apidir__,'build',
                                            'lib.{0}-{1}.{2}'.format(__gdxpy_winver__,sys.version_info[0],sys.version_info[1]))
@@ -161,7 +163,7 @@ class gdxsymb:
     def __repr__(self):
         return '({0}) {1}'.format(self.stype,self.desc)
 
-    def get_values(self,reshape=True,filt=None):
+    def get_values(self,filt=None,reshape=True):
         try:
             axs = self.values.axes
             assert not self.filtered, 'If was loaded filtered before, need for reload from source' 
@@ -232,7 +234,7 @@ class gdxfile:
         assert r, '%d is not a valid symbol number' % j
         r, records, userinfo, description = gdxcc.gdxSymbolInfoX(h, j)
         assert r, '%d is not a valid symbol number' % j
-        return {'name':name, 'stype':stype, 'desc':'', 'dim':dims}
+        return {'name':name, 'stype':stype, 'desc':description, 'dim':dims}
 
     def get_symbols_list(self):
         slist = []
@@ -277,6 +279,7 @@ class gdxfile:
             assert ret, "Symbol '%s' not found in GDX '%s'" % (name,self.internal_filename)
             sinfo = self.get_sid_info(symNr)
             dim = sinfo['dim']
+            assert dim>0, "Symbol '%s' is a scalar, not supported" % (name)
             symType = sinfo['stype']
             ret, nrRecs = gdxcc.gdxDataReadStrStart(gdxHandle, symNr)
             assert ret, "Error in gdxDataReadStrStart: "+gdxcc.gdxErrorStr(gdxHandle,gdxGetLastError(gdxHandle))[1]
@@ -285,14 +288,22 @@ class gdxfile:
             vtable = []
             rcounter = 0
             rowtype = None
+            if filt != None:
+                if isinstance(filt,list):
+                    filt = '^({0})$'.format('|'.join([re.escape(x) for x in filt]))
+                filt_regex = re.compile(filt, re.IGNORECASE)
             for i in range(nrRecs):
                 vrow = [None]*(dim+1)
                 ret, elements, values, afdim = gdxcc.gdxDataReadStr(gdxHandle)
                 assert ret, "Error in gdxDataReadStr: "+gdxcc.gdxErrorStr(gdxHandle,gdxGetLastError(gdxHandle))[1]
                 if (filt != None):
-                    try:
-                        ifilt = elements.index(filt)
-                    except:
+                    match_filt = False
+                    for e in elements:
+                        m = filt_regex.match(e)
+                        if m != None:
+                            match_filt = True
+                            break
+                    if not match_filt:
                         continue
                 for d in range(dim):
                     try:
@@ -303,15 +314,15 @@ class gdxfile:
                 vtable.append(vrow)
                 rcounter += 1
             gdxcc.gdxDataReadDone(gdxHandle)
-            if symType == gdxcc.GMS_DT_SET:
-                ifilt = 1
+            #if symType == gdxcc.GMS_DT_SET:
+            #    ifilt = 1
             cols = ['s%d' % x for x in range(dim)]+['val',]
             #print vtable[:5]
             #print cols
             df = pd.DataFrame(vtable,columns=cols)
             #print df
-            if ifilt != None:
-                df = df.drop(df.columns[ifilt], axis=1)
+            #if ifilt != None:
+            #    df = df.drop(df.columns[ifilt], axis=1)
             #print "%d / %d records read from <%s>" % (rcounter, nrRecs, self.internal_filename)
 
         elif __gdxpy_mode__ == GDX_MODE_SHELL:
@@ -344,7 +355,7 @@ class gdxfile:
         self.data = df
         return df
         
-def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True):
+def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True,reshape=True,returnfirst=False):
       """
       Loads into global namespace the symbols listed in {slist}
       from the GDX listed in {glist}.
@@ -361,33 +372,40 @@ def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_unders
       ng = len(glist)
       nax = 0
       #print 'From GDX:\n%s' % ('\n'.join(['g%d) %s' % (ig+1,g) for ig,g in enumerate(glist)]))
+      gdxobjs = []
+      if isinstance(glist[0],gdxfile):
+          gdxobjs = glist
+          glist = [g.internal_filename for g in glist]
+      else:
+          for g in glist:
+              gdxobjs.append(gdxfile(g))
       for s in slist:
             print '\n<<< %s >>>' % s
             sdata = {}
             svar = None
             validgdxs = []
             for ig,g in enumerate(glist):
-                  fname, fext = os.path.splitext(g)
-                  if gdxlabels == None:
-                      gid = fname
-                  else:
-                      if isinstance(gdxlabels,int):
-                          gid = 'g%d' % (ig+gdxlabels)
-                      else:
-                          gid = gdxlabels[ig]
-                  try:
-                      sdata_curr = gdxfile(g).query(s,filt=filt)
-                  except Exception as e:
-                      traceback.print_exc()
-                      #print_traceback(e)
-                      #print 'WARNING: Missing "%s" from "%s"' % (s,gid)
-                      continue
-                  validgdxs.append(gid)
-                  nax = len(sdata_curr.axes)
-                  if reducel and ('l' in sdata_curr.axes[-1]):
-                        nax -= 1 
-                        sdata_curr = eval("sdata_curr.ix[%s,'l']" % ','.join([':' for x in range(nax)]))
-                  sdata[gid] = sdata_curr
+                fname, fext = os.path.splitext(g)
+                if gdxlabels == None:
+                    gid = fname
+                else:
+                    if isinstance(gdxlabels,int):
+                        gid = 'g%d' % (ig+gdxlabels)
+                    else:
+                        gid = gdxlabels[ig]
+                try:
+                    sdata_curr = gdxobjs[ig].query(s,filt=filt,reshape=reshape)
+                except Exception as e:
+                    traceback.print_exc()
+                    #print_traceback(e)
+                    #print 'WARNING: Missing "%s" from "%s"' % (s,gid)
+                    continue
+                validgdxs.append(gid)
+                nax = len(sdata_curr.axes)
+                if reducel and ('l' in sdata_curr.axes[-1]):
+                    nax -= 1 
+                    sdata_curr = eval("sdata_curr.ix[%s,'l']" % ','.join([':' for x in range(nax)]))
+                sdata[gid] = sdata_curr
             nvg = len(validgdxs)
             if (nvg == 1) and single==True:
                   svar = sdata[validgdxs[0]]
@@ -416,15 +434,23 @@ def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_unders
                         svar = sold
                 except:
                     pass
-            sys.modules['__builtin__'].__dict__[s] = svar
+            else:
+                sys.modules['__builtin__'].__dict__[s] = svar
 
             
             if isinstance(svar,pd.DataFrame):
-                print svar.describe()
+                #print svar.describe()
+                print 'Rows:'
+                print svar.index
+                print 'Columns:'
+                print svar.columns
+            elif isinstance(svar,pd.Series):
+                pass
             else:
                 print svar
             time.sleep(0.01)
-
+            if returnfirst:
+                return svar.copy()
 
 # Main initialization code
 load_gams_binding()

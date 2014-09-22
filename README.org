@@ -23,11 +23,13 @@ This module provides some convenient functions to process the data contained in 
   
   # Create a GDX object
   gdxpath = r'C:\GAMS\win64\24.1\testlib_ml\trnsport.gdx'
-  tgdx = gp.gdxfile(gdxpath)
+  tdata = gp.gdxfile(gdxpath)
   
   # Suggested way to programmatically load symbols
-  a = tgdx.a()
-  b = gp.gdxsymb('b', tgdx).get_values()
+  a = tdata.a() # or...
+  b = tdata.query('a').get_values()
+  c = gp.gdxsymb('b', tgdx).get_values()
+  
   
   # Suggesyed way to interactively load symbols
   gp.loadsymbols('a b', gdxpath)
