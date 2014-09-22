@@ -6,14 +6,14 @@ This module provides some convenient functions to process the data contained in 
 
 * Requirements
 - Windows (tested only on Windows 7/8 - 64bit).
-- Python (tested only with  ~%PYVERSION%~ = 2.7, ~%ARCH%~ = 32bit).
-- up-to-date [[http://www.numpy.org/%E2%80%8E][numpy]] module (tested only with numpy 1.8.0).
-- up-to-date [[http://pandas.pydata.org/][pandas]] module (tested only with pandas 0.13.1).
+- Python (tested only with  ~%PYVERSION%~ = 2.7, ~%ARCH%~ = 32/64bit).
+- up-to-date [[http://www.numpy.org/%E2%80%8E][numpy]] module.
+- up-to-date [[http://pandas.pydata.org/][pandas]] module.
 - GAMS installation with the same ~%ARCH%~ of Python (e.g. 32bit Python will work with 32bit GAMS).
 - An environment variable  ~GAMSDIR~ pointing to the path of the latter. If not set, it will be assumed to be equal to the path of the last subfolder under ~C:/GAMS/win%ARCH%~.
 - Either one of the two:
   1. ~gdxcc.py~ in ~%GAMSDIR%/apifiles/Python/api/build/win%ARCH%-%PYVERSION%~. This is the faster and
-     preferred method. You can use ~gdxpy.install_gams_binding()~ for assistance in the installation.
+     preferred method. You can use ~gdxpy.install_gams_binding()~ for assistance in the installation. *You will also need a compiler*: if you are using [[http://continuum.io/downloads][Anaconda]], you should have it already.
   2. ~gdxdump~ in one of the paths of the ~PATH~ environment variable.
      This method is slower, and will be active if ~gdxcc.py~ cannot be loaded.
 * Usage

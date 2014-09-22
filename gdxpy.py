@@ -26,12 +26,13 @@ def get_winver():
 def get_gams_root():
     try:
         gamsdir = os.environ['GAMSDIR'].split(';')[0]
-        if not __gdxpy_winver__ in gamsdir:
+        wingamsdir = 'win'+__gdxpy_winver__[-2:]
+        if not wingamsdir in gamsdir:
             raise Exception('GAMSDIR environment variable does not refer to a %s GAMS installation' % __gdxpy_winver__)
         if not os.path.isdir(gamsdir):
             raise Exception('"%s" is not a valid GAMS dir')
     except:
-        gamsRoot = os.path.join(r'C:\GAMS',__gdxpy_winver__)
+        gamsRoot = os.path.join(r'C:\GAMS',wingamsdir)
         try:
             gamsver = os.walk(gamsRoot).next()[1][-1]
         except:
