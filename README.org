@@ -5,17 +5,11 @@
 This module provides some convenient functions to process the data contained in a GAMS Data eXchange file (GDX). A GDX stores the values of one or more GAMS symbols, such as sets, parameters variables and equations. With this module, one can load and manipulate GDX symbols as Pandas data structures.
 
 * Requirements
-- Windows (tested only on Windows 7/8 - 64bit).
-- Python (tested only with  ~%PYVERSION%~ = 2.7, ~%ARCH%~ = 32/64bit).
+- Python (tested only with version 2.7).
 - up-to-date [[http://www.numpy.org/%E2%80%8E][numpy]] module.
 - up-to-date [[http://pandas.pydata.org/][pandas]] module.
-- GAMS installation with the same ~%ARCH%~ of Python (e.g. 32bit Python will work with 32bit GAMS).
-- An environment variable  ~GAMSDIR~ pointing to the path of the latter. If not set, it will be assumed to be equal to the path of the last subfolder under ~C:/GAMS/win%ARCH%~.
-- Either one of the two:
-  1. ~gdxcc.py~ in ~%GAMSDIR%/apifiles/Python/api/build/win%ARCH%-%PYVERSION%~. This is the faster and
-     preferred method. You can use ~gdxpy.install_gams_binding()~ for assistance in the installation. *You will also need a compiler*: if you are using [[http://continuum.io/downloads][Anaconda]], you should have it already.
-  2. ~gdxdump~ in one of the paths of the ~PATH~ environment variable.
-     This method is slower, and will be active if ~gdxcc.py~ cannot be loaded.
+- GAMS installation with the same architecture of Python (e.g. 32bit Python will work with 32bit GAMS).
+- ~gdxcc.py~ in ~PYTHONPATH~ environment variable. 
 * Usage
 #+BEGIN_SRC python
   # Import the module
@@ -31,11 +25,11 @@ This module provides some convenient functions to process the data contained in 
   c = gp.gdxsymb('b', tgdx).get_values()
   
   
-  # Suggesyed way to interactively load symbols
-  gp.loadsymbols('a b', gdxpath)
+  # Suggested way to interactively load symbols
+  gp.gload('a b', gdxpath)
   
   # You can have multiple GDX, arbitrary labels, and domain filtering
-  gp.loadsymbols('big_symbol', 'long_gdx_file1 long_gdx_file_2','g1 g2',filt='interesting_element')
+  gp.gload('big_symbol', 'long_gdx_file1 long_gdx_file_2','g1 g2',filt='interesting_element')
 #+END_SRC
 
 * DISCLAIMER
