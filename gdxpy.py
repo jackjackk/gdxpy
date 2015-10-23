@@ -7,14 +7,24 @@ import time
 import os
 import traceback
 import numpy as np
+import glob
+import itertools
+import pdb
+import gdxcc
+
+L, M, LO, UP = (gdxcc.GMS_VAL_LEVEL,
+                gdxcc.GMS_VAL_MARGINAL,
+                gdxcc.GMS_VAL_LOWER,
+                gdxcc.GMS_VAL_UPPER)
 
 GDX_MODE_API, GDX_MODE_SHELL = range(2)
-gdxcc = None
+
+__gdxpy_gamsdir__ = os.environ['GAMSDIR']
+__gdxpy_mode__ = GDX_MODE_API
+
 __gdxpy_winver__ = None
-__gdxpy_gamsdir__ = None
 __gdxpy_apidir__ = None
 __gdxpy_gdxccdir__ = None
-__gdxpy_mode__ = None
 
 def get_winver():
     if sys.maxsize == 2147483647:
@@ -76,7 +86,7 @@ def install_gams_binding():
     cmdline = '{0} && cd {1} && python gdxsetup.py clean --all && python gdxsetup.py build --compiler=mingw32'.format(__gdxpy_apidir__[:2],__gdxpy_apidir__)
     print 'A shell will be opened and the following command will be executed:'
     print cmdline
-                                     
+
     os.system('start cmd /k "echo Close all ipython instances && pause && %s && pause && exit' % cmdline)
 
 def print_traceback(e):
@@ -116,7 +126,11 @@ def convert_pivottable_to_panel(df):
     """
     Converts a pivot table (DataFrame) into a properly shaped Panel/Panel4D.
     """
-    if len(df.index.levels)==2:
+    try:
+        nl = df.index.nlevels
+    except:
+        return df
+    if nl==2:
         p3d_dict = {}
         for subind in df.index.levels[0]:
             try:
@@ -124,7 +138,7 @@ def convert_pivottable_to_panel(df):
             except:
                 pass
         ret = pd.Panel(p3d_dict)
-    elif len(df.index.levels)==3:
+    elif nl==3:
         p4d_dict = {}
         for subind in df.index.levels[0]:
             p3d_dict = {}
@@ -135,6 +149,20 @@ def convert_pivottable_to_panel(df):
                     pass
             p4d_dict[subind] = pd.Panel(p3d_dict)
         ret = pd.Panel4D(p4d_dict)
+    elif nl==4:
+        p5d_dict = {}
+        for subind in df.index.levels[0]:
+            p4d_dict = {}
+            for sub2ind in df.index.levels[1]:
+                p3d_dict = {}
+                for sub3ind in df.index.levels[2]:
+                    try:
+                        p3d_dict[sub3ind] = df.xs([subind,sub2ind,sub3ind])
+                    except:
+                        pass
+                p4d_dict[sub2ind] = pd.Panel(p3d_dict)
+            p5d_dict[subind] = pd.Panel4D(p4d_dict)
+        ret = pd.Panel5D(p5d_dict)
     else:
         ret = df
     return ret.fillna(0)
@@ -164,10 +192,12 @@ class gdxsymb:
     def __repr__(self):
         return '({0}) {1}'.format(self.stype,self.desc)
 
-    def get_values(self,filt=None,reshape=True):
+    def get_values(self,filt=None,idval=None,reshape=False,reset=False):
         try:
+            if reset:
+                raise Exception('forced reload')
             axs = self.values.axes
-            assert not self.filtered, 'If was loaded filtered before, need for reload from source' 
+            assert not self.filtered, 'If was loaded filtered before, need for reload from source'
             ret = self.values
             if filt != None:
                 bfound = False
@@ -180,14 +210,14 @@ class gdxsymb:
                     raise Exception('Element "%s" not found' % str(filt))
                 ret = self.values.xs(filt,axis=iax)
         except:
-            ret = self.gdx.query(self.name,reshape=reshape,filt=filt)
+            ret = self.gdx.query(self.name,reshape=reshape,filt=filt,idval=idval)
             self.values = ret
             self.filtered = (filt != None)
 
         return ret
 
-    def __call__(self,filt=None):
-        return self.get_values(filt=filt)
+    def __call__(self,filt=None,idval=None,reset=False):
+        return self.get_values(filt=filt,idval=idval,reset=reset)
 
 class gdxfile:
     """
@@ -198,7 +228,7 @@ class gdxfile:
         global __gdxpy_mode__
         # Check filename
         if filename == None:
-           raise Exception('No GDX provided') 
+           raise Exception('No GDX provided')
         self.internal_filename = filename
         if not os.access(filename, os.R_OK):
             raise Exception('GDX "%s" not found or readable' % filename)
@@ -223,7 +253,7 @@ class gdxfile:
         h = self.gdxHandle
         gdxcc.gdxClose(h)
         gdxcc.gdxFree(h)
-        
+
     def __del__(self):
         self.close()
 
@@ -266,14 +296,14 @@ class gdxfile:
         else:
             raise Exception('Function "get_symbols_list" not available outside GDX API/SHELL mode')
         return slist
-        
+
     def has_symbol(self,name):
         if __gdxpy_mode__ != GDX_MODE_API:
             raise Exception('Function "get_sid_info" not available outside GDX API mode')
         ret, symNr = gdxcc.gdxFindSymbol(self.gdxHandle, name)
         return ret
 
-    def query(self, name, reshape=True, gamsdir=None, filt=None):
+    def query(self, name, reshape=True, gamsdir=None, filt=None, idval=None):
         if __gdxpy_mode__ == GDX_MODE_API:
             gdxHandle = self.gdxHandle
             ret, symNr = gdxcc.gdxFindSymbol(gdxHandle, name)
@@ -284,7 +314,11 @@ class gdxfile:
             symType = sinfo['stype']
             ret, nrRecs = gdxcc.gdxDataReadStrStart(gdxHandle, symNr)
             assert ret, "Error in gdxDataReadStrStart: "+gdxcc.gdxErrorStr(gdxHandle,gdxGetLastError(gdxHandle))[1]
-            
+            if idval is None:
+                if symType == gdxcc.GMS_DT_EQU:
+                    idval = gdxcc.GMS_VAL_MARGINAL
+                else:
+                    idval = gdxcc.GMS_VAL_LEVEL
             ifilt = None
             vtable = []
             rcounter = 0
@@ -310,12 +344,11 @@ class gdxfile:
                     try:
                         vrow[d] = int(elements[d])
                     except:
-                        vrow[d] = elements[d]
-                vrow[d+1] = values[gdxcc.GMS_VAL_LEVEL]
+                        vrow[d] = elements[d].lower()
+                vrow[d+1] = values[idval]
                 vtable.append(vrow)
                 rcounter += 1
             gdxcc.gdxDataReadDone(gdxHandle)
-            #if symType == gdxcc.GMS_DT_SET:
             #    ifilt = 1
             cols = ['s%d' % x for x in range(dim)]+['val',]
             #print vtable[:5]
@@ -347,111 +380,209 @@ class gdxfile:
         #print df
         ncols = len(df.columns)
         if ncols>1:
-            df = df.pivot_table(df.columns.values[-1],rows=list(df.columns.values[:-2]),cols=df.columns.values[-2])
+            df = df.pivot_table(df.columns.values[-1],index=list(df.columns.values[:-2]),columns=df.columns.values[-2])
             #print df
             if reshape and (ncols>3):
                 df = convert_pivottable_to_panel(df)
         else:
             df = df[df.columns.values[0]]
+        if symType == gdxcc.GMS_DT_SET:
+            df = df.index
         self.data = df
         return df
-        
-def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True,reshape=True,returnfirst=False):
+
+
+def expandmatch(m):
+    m = m.replace(' ',';').split(';')
+    if len(m)>1:
+        m = '({0})'.format('|'.join(m))
+    else:
+        m = m[0]
+    if m[-1] != '$':
+        m += '$'
+    return m
+
+def gslice(ds,kspec,op=None):
+    if isinstance(kspec,str):
+        kspec = kspec.split(';')
+    for k in kspec:
+        vfound = []
+        for ia,a in enumerate(ds.axes):
+            if isinstance(k,str) and ':' in k:
+                rlim = k.split(':')
+                k = range(int(rlim[0]),int(rlim[1])+1)
+            if isinstance(k,str):
+                for v in a.values:
+                    if not isinstance(v,str):
+                        break
+                    if re.match(k,v,re.I):
+                        vfound.append(v)
+            elif isinstance(k,list):
+                if np.in1d(k,a.values).all():
+                    vfound = k
+            #print vfound, a.values
+            nv = len(vfound)
+            if nv>0:
+                if nv>1:
+                    if ia>0:
+                        filterfmt = '[%s,{0}]'%(','.join([':']*ia))
+                    else:
+                        filterfmt = '[{0}]'
+                    ds = eval('ds.ix'+filterfmt.format(str(vfound)))
+                    if op=='sum':
+                        ds = ds.sum(axis=ia)
+                else:
+                    ds = ds.xs(vfound[0],axis=ia)
+                break
+    return ds
+
+def gsum(ds,kspec):
+    return gslice(ds,kspec,'sum')
+
+def expandlist(l,auxl=None):
+    if (l is None) or isinstance(l,int):
+        return l
+    if hasattr(l, '__call__'):
+        return [l(x) for x in auxl]
+    if isinstance(l,str):
+        l = l.replace(' ',';').split(';')
+    ret = []
+    for i in l:
+        curlynext = i.find('{')
+        curlygroups = []
+        curlyend = -1
+        while curlynext > -1:
+            # append a group with substr up to the open curly brace
+            curlygroups.append([i[curlyend+1:curlynext]])
+            # find the closing curly bracket
+            curlyend = i.find('}',curlynext)
+            curlyliststr = i[curlynext+1:curlyend]
+            doublepoint = curlyliststr.find('..')
+            if doublepoint>-1:
+                curlylist = ['%d'%x for x in range(int(curlyliststr[:doublepoint]),int(curlyliststr[doublepoint+2:])+1)]
+            else:
+                curlylist = curlyliststr.split(',')
+            curlygroups.append(curlylist)
+            curlynext = i.find('{',curlynext+1)
+        curlygroups.append([i[curlyend+1:]])
+        for combo in itertools.product(*curlygroups):
+            j = ''.join(combo)
+            if ('*' in j) or ('?' in j):
+                ret.extend(glob.glob(j))
+            else:
+                ret.append(j)
+    return ret
+
+def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
+          remove_underscore=True, clear=True, single=True, reshape=False,
+          returnfirst=False, lowercase=True, lamb=None):
       """
       Loads into global namespace the symbols listed in {slist}
-      from the GDX listed in {glist}.
+      from the GDX listed in {gpaths}.
       If {reducel}==True, filter the dataset on 'l' entries only.
       If {remove_underscore}==True, symbols are loaded into the global
       namespace with their names without underscores.
       """
-      if isinstance(slist,str):
-            slist = slist.split(" ")
-      if isinstance(glist,str):
-            glist = glist.split(" ")
-      if isinstance(gdxlabels,str):
-            gdxlabels = gdxlabels.split(" ")
-      ng = len(glist)
-      nax = 0
-      #print 'From GDX:\n%s' % ('\n'.join(['g%d) %s' % (ig+1,g) for ig,g in enumerate(glist)]))
-      gdxobjs = []
-      if isinstance(glist[0],gdxfile):
-          gdxobjs = glist
-          glist = [g.internal_filename for g in glist]
+      # Normalize the match string for symbols
+      smatch = expandmatch(smatch)
+      # Build gdxobj list and
+      if isinstance(gpaths,list) and isinstance(gpaths[0],gdxfile):
+          gpaths = [g.internal_filename for g in gpaths]
+          gdxobjs = gpaths
+      elif not gpaths is None:
+          gpaths = expandlist(gpaths)
+          gdxobjs = [gdxfile(g) for g in gpaths]
       else:
-          for g in glist:
-              gdxobjs.append(gdxfile(g))
-      for s in slist:
+          gpaths = gload.last_gpaths
+          gdxobjs = [gdxfile(g) for g in gpaths]
+          glabels = gload.last_glabels
+      # Normalize the list of labels for gdxs
+      gload.last_gpaths = gpaths
+      gload.last_glabels = glabels
+      glabels = expandlist(glabels,gpaths)
+      all_symbols = set()
+      for g in gdxobjs:
+          all_symbols |= set([x.name for x in g.get_symbols_list()])
+      ng = len(gpaths)
+      nax = 0
+      print smatch
+      for s in all_symbols:
+            m = re.match(smatch,s, re.M|re.I)
+            if not m:
+                continue
             print '\n<<< %s >>>' % s
             sdata = {}
             svar = None
             validgdxs = []
-            for ig,g in enumerate(glist):
+            for ig,g in enumerate(gpaths):
                 fname, fext = os.path.splitext(g)
-                if gdxlabels == None:
+                if glabels == None:
                     gid = fname
                 else:
-                    if isinstance(gdxlabels,int):
-                        gid = 'g%d' % (ig+gdxlabels)
+                    if isinstance(glabels,int):
+                        gid = 'g%d' % (ig+glabels)
                     else:
-                        gid = gdxlabels[ig]
+                        gid = glabels[ig]
                 try:
-                    sdata_curr = gdxobjs[ig].query(s,filt=filt,reshape=reshape)
+                    sdata_curr = gdxobjs[ig].query(s,filt=filt,reshape=False)
+                    sdata[gid] = sdata_curr
                 except Exception as e:
-                    traceback.print_exc()
-                    #print_traceback(e)
-                    #print 'WARNING: Missing "%s" from "%s"' % (s,gid)
+                    #traceback.print_exc()
+                    print_traceback(e)
+                    print 'WARNING: Missing "%s" from "%s"' % (s,gid)
                     continue
                 validgdxs.append(gid)
-                nax = len(sdata_curr.axes)
-                if reducel and ('l' in sdata_curr.axes[-1]):
-                    nax -= 1 
-                    sdata_curr = eval("sdata_curr.ix[%s,'l']" % ','.join([':' for x in range(nax)]))
-                sdata[gid] = sdata_curr
             nvg = len(validgdxs)
-            if (nvg == 1) and single==True:
-                  svar = sdata[validgdxs[0]]
-            elif nvg >= 1:
-                  if nax == 1:
-                        svar = pd.DataFrame(sdata)
-                  elif nax == 2:
-                        svar = pd.Panel(sdata)
-                  elif nax == 3:
-                        svar = pd.Panel4D(sdata)
-                  elif nax == 4:
-                        svar = pd.Panel5D(sdata)
-                  else:
-                        raise Exception('Dimension not supported')
+            if nvg>1:
+                concat_axis=0
+                if isinstance(sdata_curr,pd.Series):
+                    concat_axis=1
+                df = pd.concat(sdata,keys=validgdxs,axis=concat_axis)
             else:
-                continue
+                df = sdata_curr
+            if reshape:
+                  svar = convert_pivottable_to_panel(df)
+            else:
+                  svar = df
             if remove_underscore:
                   s = s.replace('_','')
-            if not clear:
-                try:
-                    sold = sys.modules['__builtin__'].__dict__[s]
-                    if len(sold.shape) == len(svar.shape):
-                        print 'Augmenting',s
-                        for c in svar.axes[0]:
-                            sold[c] = svar[c]
-                        svar = sold
-                except:
-                    pass
-            else:
-                sys.modules['__builtin__'].__dict__[s] = svar
+            if lowercase:
+                s = s.lower()
+            if not lamb is None:
+                svar = lamb(svar)
+            if not returnfirst:
+                if not clear:
+                    try:
+                        sold = sys.modules['__builtin__'].__dict__[s]
+                        if len(sold.shape) == len(svar.shape):
+                            print 'Augmenting',s
+                            for c in svar.axes[0]:
+                                sold[c] = svar[c]
+                            svar = sold
+                    except:
+                        pass
+                else:
+                    sys.modules['__builtin__'].__dict__[s] = svar
 
-            
+
             if isinstance(svar,pd.DataFrame):
                 #print svar.describe()
-                print 'Rows:'
-                print svar.index
-                print 'Columns:'
-                print svar.columns
+                print 'Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
+                print 'Columns: {} ... {}'.format(str(svar.columns[0]), str(svar.columns[-1]))
             elif isinstance(svar,pd.Series):
                 pass
             else:
                 print svar
-            time.sleep(0.01)
+            #time.sleep(0.01)
             if returnfirst:
-                return svar.copy()
+                return svar
+
+def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True,reshape=True,returnfirst=False):
+    gload(slist,glist,gdxlabels,filt,reducel,remove_underscore,clear,single,reshape,returnfirst)
 
 # Main initialization code
-load_gams_binding()
+#load_gams_binding()
+
+gload.last_gpaths = None
+gload.last_glabels = None
+
