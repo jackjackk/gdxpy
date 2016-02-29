@@ -310,7 +310,7 @@ class gdxfile:
             assert ret, "Symbol '%s' not found in GDX '%s'" % (name,self.internal_filename)
             sinfo = self.get_sid_info(symNr)
             dim = sinfo['dim']
-            assert dim>0, "Symbol '%s' is a scalar, not supported" % (name)
+            # assert dim>0, "Symbol '%s' is a scalar, not supported" % (name)
             symType = sinfo['stype']
             ret, nrRecs = gdxcc.gdxDataReadStrStart(gdxHandle, symNr)
             assert ret, "Error in gdxDataReadStrStart: "+gdxcc.gdxErrorStr(gdxHandle,gdxGetLastError(gdxHandle))[1]
@@ -340,6 +340,7 @@ class gdxfile:
                             break
                     if not match_filt:
                         continue
+                d = -1
                 for d in range(dim):
                     try:
                         vrow[d] = int(elements[d])
@@ -540,6 +541,10 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                 df = pd.concat(sdata,keys=validgdxs,axis=concat_axis)
             else:
                 df = sdata_curr
+            if df.index == [0]:
+                df = df.iloc[0]
+                if not isinstance(df, float):
+                    df.name = s
             if reshape:
                   svar = convert_pivottable_to_panel(df)
             else:
@@ -565,11 +570,12 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     sys.modules['__builtin__'].__dict__[s] = svar
 
 
-            if isinstance(svar,pd.DataFrame):
+            if isinstance(svar, pd.DataFrame):
                 #print svar.describe()
                 print 'Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
                 print 'Columns: {} ... {}'.format(str(svar.columns[0]), str(svar.columns[-1]))
-            elif isinstance(svar,pd.Series):
+            elif isinstance(svar, pd.Series):
+                print 'Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
                 pass
             else:
                 print svar
