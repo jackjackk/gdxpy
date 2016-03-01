@@ -19,7 +19,7 @@ L, M, LO, UP = (gdxcc.GMS_VAL_LEVEL,
 
 GDX_MODE_API, GDX_MODE_SHELL = range(2)
 
-__gdxpy_gamsdir__ = os.environ['GAMSDIR'].split(';')[-1]
+__gdxpy_gamsdir__ = os.environ['GAMSDIR'].split(';')[0]
 __gdxpy_mode__ = GDX_MODE_API
 
 __gdxpy_winver__ = None
@@ -35,7 +35,7 @@ def get_winver():
 
 def get_gams_root():
     try:
-        gamsdir = os.environ['GAMSDIR'].split(';')[-1]
+        gamsdir = os.environ['GAMSDIR'].split(';')[0]
         wingamsdir = 'win'+__gdxpy_winver__[-2:]
         if not wingamsdir in gamsdir:
             raise Exception('GAMSDIR environment variable does not refer to a %s GAMS installation' % __gdxpy_winver__)
