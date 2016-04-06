@@ -388,6 +388,8 @@ class gdxfile:
         else:
             df = df[df.columns.values[0]]
         if symType == gdxcc.GMS_DT_SET:
+            if ncols>2:
+                df = df.stack()
             df = df.index
         self.data = df
         return df
@@ -476,7 +478,7 @@ def expandlist(l,auxl=None):
 
 def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
           remove_underscore=True, clear=True, single=True, reshape=False,
-          returnfirst=False, lowercase=True, lamb=None):
+          returnfirst=False, lowercase=True, lamb=None, verbose=True):
       """
       Loads into global namespace the symbols listed in {slist}
       from the GDX listed in {gpaths}.
@@ -485,6 +487,9 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
       namespace with their names without underscores.
       """
       # Normalize the match string for symbols
+      if smatch[0] == '@':
+          returnfirst = True
+          smatch = smatch[1:]
       smatch = expandmatch(smatch)
       # Build gdxobj list and
       if isinstance(gpaths,list) and isinstance(gpaths[0],gdxfile):
@@ -506,12 +511,12 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
           all_symbols |= set([x.name for x in g.get_symbols_list()])
       ng = len(gpaths)
       nax = 0
-      print smatch
+      if verbose: print smatch
       for s in all_symbols:
             m = re.match(smatch,s, re.M|re.I)
             if not m:
                 continue
-            print '\n<<< %s >>>' % s
+            if verbose: print '\n<<< %s >>>' % s
             sdata = {}
             svar = None
             validgdxs = []
@@ -529,8 +534,9 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     sdata[gid] = sdata_curr
                 except Exception as e:
                     #traceback.print_exc()
-                    print_traceback(e)
-                    print 'WARNING: Missing "%s" from "%s"' % (s,gid)
+                    if verbose:
+                        print_traceback(e)
+                        print 'WARNING: Missing "%s" from "%s"' % (s,gid)
                     continue
                 validgdxs.append(gid)
             nvg = len(validgdxs)
@@ -541,10 +547,13 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                 df = pd.concat(sdata,keys=validgdxs,axis=concat_axis)
             else:
                 df = sdata_curr
-            if df.index == [0]:
-                df = df.iloc[0]
-                if not isinstance(df, float):
-                    df.name = s
+            try:
+                if df.index == [0]:
+                    df = df.iloc[0]
+                    if not isinstance(df, float):
+                        df.name = s
+            except:
+                pass
             if reshape:
                   svar = convert_pivottable_to_panel(df)
             else:
@@ -560,7 +569,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     try:
                         sold = sys.modules['__builtin__'].__dict__[s]
                         if len(sold.shape) == len(svar.shape):
-                            print 'Augmenting',s
+                            if verbose: print 'Augmenting',s
                             for c in svar.axes[0]:
                                 sold[c] = svar[c]
                             svar = sold
@@ -570,15 +579,14 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     sys.modules['__builtin__'].__dict__[s] = svar
 
 
-            if isinstance(svar, pd.DataFrame):
-                #print svar.describe()
-                print 'Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
-                print 'Columns: {} ... {}'.format(str(svar.columns[0]), str(svar.columns[-1]))
-            elif isinstance(svar, pd.Series):
-                print 'Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
-                pass
-            else:
-                print svar
+            if verbose:
+                if isinstance(svar, pd.DataFrame):
+                    print 'Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
+                    print 'Columns: {} ... {}'.format(str(svar.columns[0]), str(svar.columns[-1]))
+                elif isinstance(svar, pd.Series):
+                    print 'Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
+                else:
+                    print svar
             #time.sleep(0.01)
             if returnfirst:
                 return svar
