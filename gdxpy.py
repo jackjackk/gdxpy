@@ -1,6 +1,6 @@
 import subprocess
 import re
-import StringIO
+from io import StringIO
 import pandas as pd
 import sys
 import time
@@ -10,21 +10,55 @@ import numpy as np
 import glob
 import itertools
 import pdb
+import shutil
+import platform
+from distutils import spawn
+
+GDX_MODE_API, GDX_MODE_SHELL = range(2)
+
+__gdxpy_pyver__ = (sys.version_info.major, sys.version_info.minor)
+if __gdxpy_pyver__[0] >= 3:
+    findexe = lambda x : shutil.which(x)
+else:
+    findexe = lambda x : spawn.find_executable(x)
+
+__gdxpy_gamsdir__ = os.path.dirname(findexe('gams'))
+__gdxpy_gamsbit__ = platform.architecture(os.path.join(__gdxpy_gamsdir__, 'gams.exe'))[0][:2]
+__gdxpy_pypath__ = sys.executable
+__gdxpy_pybit__ = platform.architecture(__gdxpy_pypath__)[0][:2]
+
+assert __gdxpy_gamsbit__ == __gdxpy_pybit__, ('GAMS bitness ({}bit) is not the same as Python bitness ({}bit).'
+                                              'Please use the same'.format(__gdxpy_gamsbit__, __gdxpy_pybit__))
+
+__gdxpy_winver__ = None
+__gdxpy_apidir__ = os.path.join(__gdxpy_gamsdir__, 'apifiles', 'Python', 'api')
+
+bit2lab = { '32': 'win32', '64': 'win-amd64'}
+spec2builddir = lambda b, v : 'lib.{}-{}.{}'.format(bit2lab[b], v[0], v[1])
+
+if __gdxpy_pyver__[0] >= 3:
+    __gdxpy_gdxccdir__ = os.path.join(__gdxpy_apidir__, 'build', spec2builddir(__gdxpy_pybit__, __gdxpy_pyver__))
+else:
+    __gdxpy_gdxccdir__ = __gdxpy_apidir__
+
+if not os.path.exists(__gdxpy_gdxccdir__):
+    cmdline = ('{0} && cd {1} && {2} gdxsetup.py clean --all && {2} gdxsetup.py build'
+               .format(__gdxpy_apidir__[:2], __gdxpy_apidir__, __gdxpy_pypath__))
+    print(cmdline)
+    os.system('start cmd /k "echo Close all ipython instances && pause && %s && pause && exit' % cmdline)
+    assert False, 'Follow instructions to install Python-GDX interface.'
+
+sys.path.insert(0, __gdxpy_gdxccdir__)
+print('Using gdxcc from %s' % __gdxpy_gdxccdir__)
 import gdxcc
+__gdxpy_mode__ = GDX_MODE_API
+
 
 L, M, LO, UP = (gdxcc.GMS_VAL_LEVEL,
                 gdxcc.GMS_VAL_MARGINAL,
                 gdxcc.GMS_VAL_LOWER,
                 gdxcc.GMS_VAL_UPPER)
 
-GDX_MODE_API, GDX_MODE_SHELL = range(2)
-
-__gdxpy_gamsdir__ = os.environ['GAMSDIR'].split(';')[0]
-__gdxpy_mode__ = GDX_MODE_API
-
-__gdxpy_winver__ = None
-__gdxpy_apidir__ = None
-__gdxpy_gdxccdir__ = None
 
 def get_winver():
     if sys.maxsize == 2147483647:
@@ -66,16 +100,16 @@ def load_gams_binding(gamsdir=None):
         __gdxpy_gdxccdir__ =  os.path.join(__gdxpy_apidir__,'build',
                                            'lib.{0}-{1}.{2}'.format(__gdxpy_winver__,sys.version_info[0],sys.version_info[1]))
         if not os.path.isdir(__gdxpy_gdxccdir__):
-            print 'Please compile the GDX bindings at path "%s" (e.g. by calling install_gams_binding())' % __gdxpy_gdxccdir__
+            print('Please compile the GDX bindings at path "%s" (e.g. by calling install_gams_binding())' % __gdxpy_gdxccdir__)
             raise Exception('GDX Bindings missing')
         if __gdxpy_gdxccdir__ not in sys.path:
             sys.path.insert(0,__gdxpy_gdxccdir__)
-        print 'Using gdxcc from %s' % __gdxpy_gdxccdir__
+        print('Using gdxcc from %s' % __gdxpy_gdxccdir__)
         import gdxcc as local_gdxcc
         gdxcc = local_gdxcc
         __gdxpy_mode__ = GDX_MODE_API
     except:
-        print 'Module gdxcc not found: GDX shell mode will be used'
+        print('Module gdxcc not found: GDX shell mode will be used')
         __gdxpy_mode__ = GDX_MODE_SHELL
 
 def install_gams_binding():
@@ -84,8 +118,8 @@ def install_gams_binding():
     #cmdline = 'cd {0} && if exist build (rmdir /S build) else (echo .) && python gdxsetup.py build --compiler=mingw32 && cd build\lib.w* && copy *.* {1} && if exist {2} (del {2}) else (echo .)'.format(os.path.join(gamsdir,'apifiles','Python','api'),
     #                                                                                                                                      pkgDir, os.path.join(pkgDir,'gdxcc.pyc'))
     cmdline = '{0} && cd {1} && python gdxsetup.py clean --all && python gdxsetup.py build --compiler=mingw32'.format(__gdxpy_apidir__[:2],__gdxpy_apidir__)
-    print 'A shell will be opened and the following command will be executed:'
-    print cmdline
+    print('A shell will be opened and the following command will be executed:')
+    print(cmdline)
 
     os.system('start cmd /k "echo Close all ipython instances && pause && %s && pause && exit' % cmdline)
 
@@ -103,14 +137,14 @@ File "%(filename)s", line %(lineno)s, in %(name)s
         'type'    : exc_type.__name__,
         'message' : exc_value.message, # or see traceback._some_str()
     }
-    print "%(type)s : %(message)s [%(filename)s.%(lineno)d]" % traceback_details
+    print("%(type)s : %(message)s [%(filename)s.%(lineno)d]" % traceback_details)
     return
-    print traceback_template % traceback_details
+    print(traceback_template % traceback_details)
     exc_type, exc_obj, exc_tb = sys.exc_info()
     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
     print(exc_type, fname, exc_tb.tb_lineno)
     top = traceback.extract_stack()[-1]
-    print ', '.join([type(e).__name__, os.path.basename(top[0]), str(top[1])])
+    print(', '.join([type(e).__name__, os.path.basename(top[0]), str(top[1])]))
 
 pd.Panel5D = pd.core.panelnd.create_nd_panel_factory(
                               klass_name   = 'Panel5D',
@@ -241,7 +275,7 @@ class gdxfile:
                 assert gdxcc.gdxOpenRead(self.gdxHandle, self.internal_filename)[0]
             except Exception as e:
                 print_traceback(e)
-                print "GDX API NOT WORKING: FALLING BACK TO GDX SHELL MODE"
+                print("GDX API NOT WORKING: FALLING BACK TO GDX SHELL MODE")
                 __gdxpy_mode__ = GDX_MODE_SHELL
         # Access symbols as class members
         #for symb in self.get_symbols_list():
@@ -511,12 +545,12 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
           all_symbols |= set([x.name for x in g.get_symbols_list()])
       ng = len(gpaths)
       nax = 0
-      if verbose: print smatch
+      if verbose: print(smatch)
       for s in all_symbols:
             m = re.match(smatch,s, re.M|re.I)
             if not m:
                 continue
-            if verbose: print '\n<<< %s >>>' % s
+            if verbose: print('\n<<< %s >>>' % s)
             sdata = {}
             svar = None
             validgdxs = []
@@ -536,7 +570,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     #traceback.print_exc()
                     if verbose:
                         print_traceback(e)
-                        print 'WARNING: Missing "%s" from "%s"' % (s,gid)
+                        print('WARNING: Missing "%s" from "%s"' % (s,gid))
                     continue
                 validgdxs.append(gid)
             nvg = len(validgdxs)
@@ -569,7 +603,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     try:
                         sold = sys.modules['__builtin__'].__dict__[s]
                         if len(sold.shape) == len(svar.shape):
-                            if verbose: print 'Augmenting',s
+                            if verbose: print('Augmenting',s)
                             for c in svar.axes[0]:
                                 sold[c] = svar[c]
                             svar = sold
@@ -581,12 +615,12 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
 
             if verbose:
                 if isinstance(svar, pd.DataFrame):
-                    print 'Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
-                    print 'Columns: {} ... {}'.format(str(svar.columns[0]), str(svar.columns[-1]))
+                    print('Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
+                    print('Columns: {} ... {}'.format(str(svar.columns[0]), str(svar.columns[-1])))
                 elif isinstance(svar, pd.Series):
-                    print 'Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1]))
+                    print('Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
                 else:
-                    print svar
+                    print(svar)
             #time.sleep(0.01)
             if returnfirst:
                 return svar
