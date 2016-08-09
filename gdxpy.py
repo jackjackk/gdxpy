@@ -16,6 +16,9 @@ from distutils import spawn
 
 GDX_MODE_API, GDX_MODE_SHELL = range(2)
 
+RESHAPE_NONE, RESHAPE_SERIES, RESHAPE_FRAME, RESHAPE_PANEL = range(4)
+RESHAPE_DEFAULT = RESHAPE_NONE
+
 __gdxpy_pyver__ = (sys.version_info.major, sys.version_info.minor)
 if __gdxpy_pyver__[0] >= 3:
     findexe = lambda x : shutil.which(x)
@@ -226,7 +229,7 @@ class gdxsymb:
     def __repr__(self):
         return '({0}) {1}'.format(self.stype,self.desc)
 
-    def get_values(self,filt=None,idval=None,reshape=False,reset=False):
+    def get_values(self,filt=None,idval=None,reshape=RESHAPE_DEFAULT,reset=False):
         try:
             if reset:
                 raise Exception('forced reload')
@@ -337,7 +340,7 @@ class gdxfile:
         ret, symNr = gdxcc.gdxFindSymbol(self.gdxHandle, name)
         return ret
 
-    def query(self, name, reshape=True, gamsdir=None, filt=None, idval=None):
+    def query(self, name, reshape=RESHAPE_DEFAULT, gamsdir=None, filt=None, idval=None):
         if __gdxpy_mode__ == GDX_MODE_API:
             gdxHandle = self.gdxHandle
             ret, symNr = gdxcc.gdxFindSymbol(gdxHandle, name)
@@ -413,17 +416,10 @@ class gdxfile:
         #print df.columns.values
         #print df.columns.values[-1], list(df.columns.values[:-2]), df.columns.values[-2]
         #print df
-        ncols = len(df.columns)
-        if ncols>1:
-            df = df.pivot_table(df.columns.values[-1],index=list(df.columns.values[:-2]),columns=df.columns.values[-2])
-            #print df
-            if reshape and (ncols>3):
-                df = convert_pivottable_to_panel(df)
-        else:
-            df = df[df.columns.values[0]]
         if symType == gdxcc.GMS_DT_SET:
-            if ncols>2:
-                df = df.stack()
+            reshape = RESHAPE_SERIES
+        df = dfreshape(df, reshape)
+        if symType == gdxcc.GMS_DT_SET:
             df = df.index
         self.data = df
         return df
@@ -510,8 +506,25 @@ def expandlist(l,auxl=None):
                 ret.append(j)
     return ret
 
+
+def dfreshape(df, reshape):
+    ncols = len(df.columns)
+    if ncols == 1:
+        return df['val'][0]
+    idxcols = list(df.columns.values)[:-1]
+    vcol = df.columns.values[-1]
+    if (reshape > RESHAPE_SERIES) and (ncols > 2):
+        df = df.pivot_table(vcol, index=idxcols[:-1],
+                                columns=idxcols[-1])
+        if (reshape == RESHAPE_PANEL) and (ncols > 3):
+            df = convert_pivottable_to_panel(df)
+    elif reshape >= RESHAPE_SERIES:
+        df = df.set_index(idxcols)[vcol]
+    return df
+
+
 def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
-          remove_underscore=True, clear=True, single=True, reshape=False,
+          remove_underscore=True, clear=True, single=True, reshape=RESHAPE_DEFAULT,
           returnfirst=False, lowercase=True, lamb=None, verbose=True):
       """
       Loads into global namespace the symbols listed in {slist}
@@ -564,7 +577,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     else:
                         gid = glabels[ig]
                 try:
-                    sdata_curr = gdxobjs[ig].query(s,filt=filt,reshape=False)
+                    sdata_curr = gdxobjs[ig].query(s,filt=filt,reshape=reshape)
                     sdata[gid] = sdata_curr
                 except Exception as e:
                     #traceback.print_exc()
@@ -575,23 +588,43 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                 validgdxs.append(gid)
             nvg = len(validgdxs)
             if nvg>1:
-                concat_axis=0
-                if isinstance(sdata_curr,pd.Series):
-                    concat_axis=1
-                df = pd.concat(sdata,keys=validgdxs,axis=concat_axis)
+                if isinstance(sdata_curr, pd.Index):
+                    df = pd.concat({gid: pd.Series(1, x) for gid, x in sdata.items()}, keys=validgdxs).index
+                elif (reshape==RESHAPE_PANEL) and (isinstance(sdata_curr, pd.DataFrame)):
+                    df = pd.Panel(sdata)
+                elif (reshape==RESHAPE_PANEL) and (isinstance(sdata_curr, pd.Panel)):
+                    df = pd.Panel4D(sdata)
+                elif (reshape == RESHAPE_PANEL) and (isinstance(sdata_curr, pd.Panel4D)):
+                    df = pd.Panel5D(sdata)
+                elif (reshape == RESHAPE_PANEL) and (isinstance(sdata_curr, pd.Panel5D)):
+                    raise Exception('Panel6D not supported')
+                else:
+                    if isinstance(sdata_curr, float):
+                        df = pd.Series(sdata)[validgdxs]
+                    else:
+                        df = pd.concat(sdata, keys=validgdxs)
+                    if reshape==RESHAPE_NONE:
+                        df.reset_index(inplace=True)
+                        col2drop = df.columns[1]
+                        df.drop(col2drop, axis=1, inplace=True)
+                        ncols = len(df.columns)
+                        df.columns = ['s{}'.format(x) for x in range(ncols-1)] + ['val',]
+                    elif reshape>=RESHAPE_SERIES:
+                        for i in range(len(df.index.levels)):
+                            df.index.levels[i].name = 's{}'.format(i)
+                        if reshape>=RESHAPE_FRAME:
+                            try:
+                                df.columns.name = 's{}'.format(i+1)
+                                df = df.stack().unstack(0)
+                            except:
+                                df = df.unstack(0)
             else:
                 df = sdata_curr
             try:
-                if df.index == [0]:
-                    df = df.iloc[0]
-                    if not isinstance(df, float):
-                        df.name = s
+                df.name = s
             except:
                 pass
-            if reshape:
-                  svar = convert_pivottable_to_panel(df)
-            else:
-                  svar = df
+            svar = df
             if remove_underscore:
                   s = s.replace('_','')
             if lowercase:
