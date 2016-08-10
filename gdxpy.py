@@ -649,7 +649,8 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
             if verbose:
                 if isinstance(svar, pd.DataFrame):
                     print('Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
-                    print('Columns: {} ... {}'.format(str(svar.columns[0]), str(svar.columns[-1])))
+                    print('Columns: {}'.format(';\n         '.join(['{} = {{{}, ..., {}}}'.format(
+                        str(svar.columns[i]), svar.iloc[0,i], svar.iloc[-1,i]) for i in range(len(svar.columns))])))
                 elif isinstance(svar, pd.Series):
                     print('Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
                 else:
