@@ -17,7 +17,7 @@ from distutils import spawn
 GDX_MODE_API, GDX_MODE_SHELL = range(2)
 
 RESHAPE_NONE, RESHAPE_SERIES, RESHAPE_FRAME, RESHAPE_PANEL = range(4)
-RESHAPE_DEFAULT = RESHAPE_NONE
+RESHAPE_DEFAULT = RESHAPE_SERIES
 
 __gdxpy_pyver__ = (sys.version_info.major, sys.version_info.minor)
 if __gdxpy_pyver__[0] >= 3:

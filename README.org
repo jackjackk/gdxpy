@@ -9,29 +9,31 @@ This module provides some convenient functions to process the data contained in 
 - up-to-date [[http://www.numpy.org/%E2%80%8E][numpy]] module.
 - up-to-date [[http://pandas.pydata.org/][pandas]] module.
 - GAMS installation with the same architecture of Python (e.g. 32bit Python will work with 32bit GAMS).
-- ~gdxcc.py~ in ~PYTHONPATH~ environment variable. 
+Note that if you have a Python version not directly supported by your GAMS distribution, you will need to recompile the GDX-Python bindings. This module will warn you if this is the case and provide you with instructions on how to proceed.
+
 * Usage
 #+BEGIN_SRC python
   # Import the module
   import gdxpy as gp
+  import os
   
   # Create a GDX object
-  gdxpath = r'C:\GAMS\win64\24.1\testlib_ml\trnsport.gdx'
+  gdxpath = os.path.join(gp.__gdxpy_gamsdir__, 'testlib_ml', 'trnsport.gdx')
   tdata = gp.gdxfile(gdxpath)
   
   # Suggested way to programmatically load symbols
   a = tdata.a() # or...
-  b = tdata.query('a').get_values()
-  c = gp.gdxsymb('b', tgdx).get_values()
-  
+  b = tdata.query('b') # or...
+  c = gp.gload('@c', gdxpath)
   
   # Suggested way to interactively load symbols
-  gp.gload('a b', gdxpath)
+  gp.gload('a b c', gdxpath)
   
-  # You can have multiple GDX, arbitrary labels, and domain filtering
-  gp.gload('big_symbol', 'long_gdx_file1 long_gdx_file_2','g1 g2',filt='interesting_element')
+  # You can have multiple GDX, arbitrary labels, and domain filtering, e.g.
+  # gp.gload('big_symbol', 'long_gdx_file1 long_gdx_file_2','g1 g2',filt='interesting_element')
 #+END_SRC
-
+- By default, a Pandas Series is returned for data, a Pandas Index for sets, and a float for scalars. To change this behavior, choose an appropriate ~reshape~ value to either obtain a tidy DataFrame (~RESHAPE_NONE~), an unstacked Series (~RESHAPE_FRAME~) or a multi-dimensional Panel (~RESHAPE_PANEL~).
+- Note the ~@~ in ~gload~ as a shortcut for returning data instead of loading it in the environment.
 * DISCLAIMER
 
 THIS SOFTWARE IS PRIVIDED "AS IS" AND COMES WITH NO WARRANTY. USE AT YOUR OWN RISK. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING BUT NOT LIMITED TO LOSS OR CORRUPTION OF DATA). USE AT YOUR OWN RISK.
