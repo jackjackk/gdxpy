@@ -253,8 +253,8 @@ class gdxsymb:
 
         return ret
 
-    def __call__(self,filt=None,idval=None,reset=False):
-        return self.get_values(filt=filt,idval=idval,reset=reset)
+    def __call__(self,filt=None,idval=None,reset=False,reshape=RESHAPE_DEFAULT):
+        return self.get_values(filt=filt,idval=idval,reset=reset,reshape=reshape)
 
 class gdxfile:
     """
