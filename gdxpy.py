@@ -39,10 +39,14 @@ __gdxpy_apidir__ = os.path.join(__gdxpy_gamsdir__, 'apifiles', 'Python', 'api')
 bit2lab = { '32': 'win32', '64': 'win-amd64'}
 spec2builddir = lambda b, v : 'lib.{}-{}.{}'.format(bit2lab[b], v[0], v[1])
 
-if __gdxpy_pyver__[0] >= 3:
-    __gdxpy_gdxccdir__ = os.path.join(__gdxpy_apidir__, 'build', spec2builddir(__gdxpy_pybit__, __gdxpy_pyver__))
-else:
+if __gdxpy_pyver__  == (3,4):
+    __gdxpy_gdxccdir__ = __gdxpy_apidir__ + '_34'
+elif __gdxpy_pyver__ == (2, 6):
+    __gdxpy_gdxccdir__ = __gdxpy_apidir__ + '_26'
+elif __gdxpy_pyver__  == (2,7):
     __gdxpy_gdxccdir__ = __gdxpy_apidir__
+else:
+    __gdxpy_gdxccdir__ = os.path.join(__gdxpy_apidir__, 'build', spec2builddir(__gdxpy_pybit__, __gdxpy_pyver__))
 
 if not os.path.exists(__gdxpy_gdxccdir__):
     cmdline = ('{0} && cd {1} && {2} gdxsetup.py clean --all && {2} gdxsetup.py build'
