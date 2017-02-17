@@ -13,6 +13,7 @@ import pdb
 import shutil
 import platform
 from distutils import spawn
+import builtins
 
 GDX_MODE_API, GDX_MODE_SHELL = range(2)
 
@@ -270,7 +271,7 @@ class gdxfile:
         # Check filename
         if filename == None:
            raise Exception('No GDX provided')
-        self.internal_filename = filename
+        self.internal_filename = os.path.abspath(filename)
         if not os.access(filename, os.R_OK):
             raise Exception('GDX "%s" not found or readable' % filename)
         # Identify access mode (through gdxcc API or shell)
@@ -638,7 +639,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
             if not returnfirst:
                 if not clear:
                     try:
-                        sold = sys.modules['__builtin__'].__dict__[s]
+                        sold = __builtins__[s]
                         if len(sold.shape) == len(svar.shape):
                             if verbose: print('Augmenting',s)
                             for c in svar.axes[0]:
@@ -647,7 +648,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     except:
                         pass
                 else:
-                    sys.modules['__builtin__'].__dict__[s] = svar
+                    __builtins__[s] = svar
 
 
             if verbose:
