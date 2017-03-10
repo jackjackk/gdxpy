@@ -564,6 +564,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
       ng = len(gpaths)
       nax = 0
       if verbose: print(smatch)
+      svar2ret = []
       for s in all_symbols:
             m = re.match(smatch,s, re.M|re.I)
             if not m:
@@ -654,7 +655,8 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
             if verbose:
                 if isinstance(svar, pd.DataFrame):
                     print('Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
-                    print('Columns: {}'.format(';\n         '.join(['{} = {{{}, ..., {}}}'.format(
+                    colwidth = np.max([len(str(svar.columns[i])) for i in range(len(svar.columns))])
+                    print('Columns: {}'.format('\n         '.join([('{:<%d} = {} ... {}'%colwidth).format(
                         str(svar.columns[i]), svar.iloc[0,i], svar.iloc[-1,i]) for i in range(len(svar.columns))])))
                 elif isinstance(svar, pd.Series):
                     print('Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
@@ -662,7 +664,12 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     print(svar)
             #time.sleep(0.01)
             if returnfirst:
-                return svar
+                svar2ret.append(svar)
+      if returnfirst:
+          if len(svar2ret) == 1:
+              svar2ret = svar2ret[0]
+          return svar2ret
+
 
 def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True,reshape=True,returnfirst=False):
     gload(slist,glist,gdxlabels,filt,reducel,remove_underscore,clear,single,reshape,returnfirst)
