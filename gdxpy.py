@@ -26,7 +26,7 @@ if __gdxpy_pyver__[0] >= 3:
 else:
     findexe = lambda x : spawn.find_executable(x)
 
-__gdxpy_gamsdir__ = os.path.dirname(findexe('gams'))
+__gdxpy_gamsdir__ = os.environ.get('GAMSDIR', os.path.dirname(findexe('gams')))
 __gdxpy_gamsbit__ = platform.architecture(os.path.join(__gdxpy_gamsdir__, 'gams.exe'))[0][:2]
 __gdxpy_pypath__ = sys.executable
 __gdxpy_pybit__ = platform.architecture(__gdxpy_pypath__)[0][:2]
