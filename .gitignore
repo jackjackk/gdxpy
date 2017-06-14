@@ -1,4 +1,9 @@
-.idea
+.idea/
 test*.py
 *.pyc
 *.gdx
+__pycache__/
+dist/
+build/
+*.egg-info/
+MANIFEST

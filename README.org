@@ -1,5 +1,4 @@
 #+OPTIONS: toc:nil h:1
-
 * Purpose
 
 This module provides some convenient functions to process the data contained in a GAMS Data eXchange file (GDX). A GDX stores the values of one or more GAMS symbols, such as sets, parameters variables and equations. With this module, one can load and manipulate GDX symbols as Pandas data structures.
