@@ -196,12 +196,12 @@ class GdxSymb:
         return self.get_values(filt=filt,idval=idval,reset=reset,reshape=reshape)
 
 
-class GdxFile:
+class GdxFile():
     """
     Represents a GDX file.
     """
 
-    def _init(self, filename=None,gamsdir=None):
+    def __init__(self, filename=None,gamsdir=None):
         assert os.access(filename, os.R_OK) != None, 'Gdx file "{}" not found or readable!'.format(filename)
         self.internal_filename = os.path.abspath(filename)
         self.gdx_handle = gdxcc.new_gdxHandle_tp()
@@ -219,7 +219,7 @@ class GdxFile:
         gdxcc.gdxFree(h)
 
 
-    def _del(self):
+    def __del__(self):
         self.close()
 
 
