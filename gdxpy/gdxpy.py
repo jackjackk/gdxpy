@@ -145,7 +145,7 @@ class GdxSymb:
     """
     Represents a GDX symbol.
     """
-    def _init(self, gdx, sinfo=None, name=None, dim=None, stype=None, desc=None):
+    def __init__(self, gdx, sinfo=None, name=None, dim=None, stype=None, desc=None):
         self.gdx = gdx
         self.values = None
         self.filtered = False
@@ -164,7 +164,7 @@ class GdxSymb:
             self.desc = desc
 
 
-    def _repr(self):
+    def __repr__(self):
         return '({0}) {1}'.format(self.stype,self.desc)
 
 
@@ -192,7 +192,7 @@ class GdxSymb:
 
         return ret
 
-    def _call(self,filt=None,idval=None,reset=False,reshape=RESHAPE_DEFAULT):
+    def __call__(self,filt=None,idval=None,reset=False,reshape=RESHAPE_DEFAULT):
         return self.get_values(filt=filt,idval=idval,reset=reset,reshape=reshape)
 
 
