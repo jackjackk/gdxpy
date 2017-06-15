@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(name='gdxpy',
-      version='0.1.0',
+      version='0.1.1',
       description='Manipulate GAMS GDX files as Pandas data structures for convenient computation and visualization',
       url='https://github.com/jackjackk/gdxpy',
       author='Giacomo Marangoni',
