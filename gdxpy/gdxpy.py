@@ -27,9 +27,11 @@ _findexe = shutil.which if (_pyver[0] >= 3) else spawn.find_executable
 _onwindows = (os.name == 'nt')
 _gamsexe = 'gams.exe' if _onwindows else 'gams'
 _gamsnotfound = 'GAMS not found: either set GAMSDIR or add "{}" path to the PATH environment variable'.format(_gamsexe)
-_gamsdir = os.environ['GAMSDIR'].split(';')[-1]
-_gamsexepath = os.path.join(_gamsdir, _gamsexe)
-if not os.path.exists(_gamsexepath):
+try:
+    _gamsdir = os.environ['GAMSDIR'].split(';')[-1]
+    _gamsexepath = os.path.join(_gamsdir, _gamsexe)
+    assert os.path.exists(_gamsexepath)
+except:
     _gamsexepath = _findexe(_gamsexe)
     assert _gamsexepath != None, _gamsnotfound
     _gamsdir = os.path.dirname(_gamsexepath)
@@ -254,7 +256,7 @@ class GdxFile():
         return ret
 
 
-    def query(self, name, reshape=RESHAPE_DEFAULT, filt=None, idval=None):
+    def query(self, name, reshape=RESHAPE_DEFAULT, filt=None, idval=None, idxlower=True):
         '''
         Query attribute `idval` from symbol `name`, and return a data structure shaped according to `reshape`.
         '''
@@ -300,7 +302,7 @@ class GdxFile():
                 try:
                     vrow[d] = int(elements[d])
                 except:
-                    vrow[d] = elements[d].lower()
+                    vrow[d] = elements[d].lower() if idxlower else elements[d]
             vrow[d+1] = values[idval]
             vtable[rcounter] = vrow
             rcounter += 1
@@ -419,7 +421,8 @@ def dfreshape(df, reshape):
 
 def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
           remove_underscore=True, clear=True, single=True, reshape=RESHAPE_DEFAULT,
-          returnfirst=False, lowercase=True, lamb=None, verbose=True):
+          idxlower=True, returnfirst=False, lowercase=True, lamb=None, verbose=True,
+          idval=None):
       """
       Loads into global namespace the symbols listed in {slist}
       from the GDX listed in {gpaths}.
@@ -472,7 +475,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     else:
                         gid = glabels[ig]
                 try:
-                    sdata_curr = gdxobjs[ig].query(s,filt=filt,reshape=reshape)
+                    sdata_curr = gdxobjs[ig].query(s,filt=filt,reshape=reshape,idval=idval,idxlower=idxlower)
                     sdata[gid] = sdata_curr
                 except Exception as e:
                     #traceback.print_exc()
