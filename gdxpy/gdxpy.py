@@ -28,9 +28,13 @@ _onwindows = (os.name == 'nt')
 _gamsexe = 'gams.exe' if _onwindows else 'gams'
 _gamsnotfound = 'GAMS not found: either set GAMSDIR or add "{}" path to the PATH environment variable'.format(_gamsexe)
 try:
-    _gamsdir = os.environ['GAMSDIR'].split(';')[-1]
-    _gamsexepath = os.path.join(_gamsdir, _gamsexe)
-    assert os.path.exists(_gamsexepath)
+    _gamsfound = False
+    for _gamsdir in os.environ['GAMSDIR'].split(';'):
+        _gamsexepath = os.path.join(_gamsdir, _gamsexe)
+        if os.path.exists(_gamsexepath):
+            _gamsfound = True
+            break
+    assert _gamsfound
 except:
     _gamsexepath = _findexe(_gamsexe)
     assert _gamsexepath != None, _gamsnotfound
