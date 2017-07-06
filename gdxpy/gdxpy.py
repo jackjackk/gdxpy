@@ -532,7 +532,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
             if not returnfirst:
                 if not clear:
                     try:
-                        sold = _builtins[s]
+                        sold = __builtins__[s]
                         if len(sold.shape) == len(svar.shape):
                             if verbose: print('Augmenting',s)
                             for c in svar.axes[0]:
@@ -541,7 +541,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     except:
                         pass
                 else:
-                    _builtins[s] = svar
+                    __builtins__[s] = svar
 
 
             logprint = logger.info if verbose else logger.debug
