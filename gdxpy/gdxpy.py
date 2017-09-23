@@ -36,7 +36,7 @@ try:
             break
     assert _gamsfound
 except:
-    _gamsexepath = _findexe(_gamsexe)
+    _gamsexepath = os.path.realpath(_findexe(_gamsexe))
     assert _gamsexepath != None, _gamsnotfound
     _gamsdir = os.path.dirname(_gamsexepath)
 _gamsbit = platform.architecture(_gamsexepath)[0][:2]
