@@ -87,61 +87,6 @@ def print_traceback(e):
     return
 
 
-pd.Panel5D = pd.core.panelnd.create_nd_panel_factory(
-                              klass_name   = 'Panel5D',
-                              orders  = [ 'cool', 'labels','items','major_axis','minor_axis'],
-                              slices  = { 'labels' : 'labels', 'items' : 'items',
-                                          'major_axis' : 'major_axis', 'minor_axis' : 'minor_axis' },
-                              slicer  = pd.Panel4D,
-                              aliases = { 'major' : 'major_axis', 'minor' : 'minor_axis' },
-                              stat_axis    = 2)
-
-
-def convert_pivottable_to_panel(df):
-    """
-    Converts a pivot table (DataFrame) into a properly shaped Panel/Panel4D.
-    """
-    try:
-        nl = df.index.nlevels
-    except:
-        return df
-    if nl==2:
-        p3d_dict = {}
-        for subind in df.index.levels[0]:
-            try:
-                p3d_dict[subind] = df.xs([subind])
-            except:
-                pass
-        ret = pd.Panel(p3d_dict)
-    elif nl==3:
-        p4d_dict = {}
-        for subind in df.index.levels[0]:
-            p3d_dict = {}
-            for sub2ind in df.index.levels[1]:
-                try:
-                    p3d_dict[sub2ind] = df.xs([subind,sub2ind])
-                except:
-                    pass
-            p4d_dict[subind] = pd.Panel(p3d_dict)
-        ret = pd.Panel4D(p4d_dict)
-    elif nl==4:
-        p5d_dict = {}
-        for subind in df.index.levels[0]:
-            p4d_dict = {}
-            for sub2ind in df.index.levels[1]:
-                p3d_dict = {}
-                for sub3ind in df.index.levels[2]:
-                    try:
-                        p3d_dict[sub3ind] = df.xs([subind,sub2ind,sub3ind])
-                    except:
-                        pass
-                p4d_dict[sub2ind] = pd.Panel(p3d_dict)
-            p5d_dict[subind] = pd.Panel4D(p4d_dict)
-        ret = pd.Panel5D(p5d_dict)
-    else:
-        ret = df
-    return ret.fillna(0)
-
 
 def get_last_error(context, gdx_handle):
     return "Error in {}: {}".format(context, +gdxcc.gdxErrorStr(gdx_handle,gdxGetLastError(gdx_handle))[1])
@@ -417,7 +362,7 @@ def dfreshape(df, reshape):
         df = df.pivot_table(vcol, index=idxcols[:-1],
                                 columns=idxcols[-1])
         if (reshape == RESHAPE_PANEL) and (ncols > 3):
-            df = convert_pivottable_to_panel(df)
+            raise NotImplementedError('Panels are obsolete')
     elif reshape >= RESHAPE_SERIES:
         df = df.set_index(idxcols)[vcol]
     return df
@@ -492,14 +437,8 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
             if nvg>1:
                 if isinstance(sdata_curr, pd.Index):
                     df = pd.concat({gid: pd.Series(1, x) for gid, x in sdata.items()}, keys=validgdxs).index
-                elif (reshape==RESHAPE_PANEL) and (isinstance(sdata_curr, pd.DataFrame)):
-                    df = pd.Panel(sdata)
-                elif (reshape==RESHAPE_PANEL) and (isinstance(sdata_curr, pd.Panel)):
-                    df = pd.Panel4D(sdata)
-                elif (reshape == RESHAPE_PANEL) and (isinstance(sdata_curr, pd.Panel4D)):
-                    df = pd.Panel5D(sdata)
-                elif (reshape == RESHAPE_PANEL) and (isinstance(sdata_curr, pd.Panel5D)):
-                    raise Exception('Panel6D not supported')
+                elif (reshape==RESHAPE_PANEL):
+                    raise NotImplementedError('Panels are obsolete')
                 else:
                     if isinstance(sdata_curr, float):
                         df = pd.Series(sdata)[validgdxs]
