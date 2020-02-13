@@ -19,6 +19,7 @@ logger = logging.getLogger('gdxpy')
 logger.debug('Logger created')
 
 _version = '0.2.0'
+_workspace = set()
 _pyver = (sys.version_info.major, sys.version_info.minor)
 _findexe = shutil.which if (_pyver[0] >= 3) else spawn.find_executable
 _onwindows = (os.name == 'nt')
@@ -229,6 +230,8 @@ class GdxFile():
             if adom == '*':
                 dom[idom] = f's{istar}'
                 istar += 1
+        if symType == gdxcc.GMS_DT_SET:
+            name = f'{name} set'
         dom.append(name)
         vtable = np.zeros(nrRecs, dtype = list(zip(dom, [object]*dim + ['f8',])))
         rcounter = 0
@@ -463,6 +466,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                         pass
                 else:
                     __builtins__[s] = svar
+                    _workspace.add(s)
 
             if verbose:
                 logprint = logger.info if verbose else logger.debug
@@ -485,6 +489,34 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
 
 def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True,returnfirst=False):
     gload(slist,glist,gdxlabels,filt,reducel,remove_underscore,clear,single,returnfirst)
+
+
+def gams2pd(s):
+    return eval(_fix_parens_from_gams(s, _workspace))
+
+
+def _fix_parens_from_gams(s, trigger_words):
+    pstack = []
+    scopy = list(s)
+    for i, c in enumerate(s):
+        if c == '(':
+            parenthesis_to_be_changed = False
+            for tw in trigger_words:
+                if s[i-len(tw):i] == tw:
+                    scopy[i] = '.loc['
+                    parenthesis_to_be_changed = True
+                    break
+            pstack.append((i, parenthesis_to_be_changed))
+        elif c == ')':
+            if len(pstack) == 0:
+                raise IndexError("No matching closing parens at: " + str(i))
+            j, parenthesis_to_be_changed = pstack.pop()
+            if parenthesis_to_be_changed:
+                scopy[i] = ']'
+    ret = ''.join(scopy)
+    print(ret)
+    return ret
+
 
 # Main initialization code
 #load_gams_binding()
