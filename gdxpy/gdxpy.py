@@ -18,10 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('gdxpy')
 logger.debug('Logger created')
 
-
-RESHAPE_NONE, RESHAPE_SERIES, RESHAPE_FRAME, RESHAPE_PANEL = range(4)
-RESHAPE_DEFAULT = RESHAPE_SERIES
-
+_version = '0.2.0'
 _pyver = (sys.version_info.major, sys.version_info.minor)
 _findexe = shutil.which if (_pyver[0] >= 3) else spawn.find_executable
 _onwindows = (os.name == 'nt')
@@ -45,6 +42,7 @@ _pybit = platform.architecture(_pypath)[0][:2]
 assert _gamsbit == _pybit, ('GAMS bitness ({}bit) is not the same as Python bitness ({}bit).'
                                               'Please use the same'.format(_gamsbit, _pybit))
 
+logger.info(f'Using gdxpy v.{_version} ({os.path.dirname(__file__)})')
 logger.info('Using {} as GAMS directory'.format(_gamsdir))
 try:
     import gdxcc
@@ -105,6 +103,7 @@ class GdxSymb:
             self.dim = sinfo['dim']
             self.stype = sinfo['stype']
             self.desc = sinfo['desc']
+            self.dom = sinfo['dom']
         if name != None:
             self.name = name
         if dim != None:
@@ -119,7 +118,7 @@ class GdxSymb:
         return '({0}) {1}'.format(self.stype,self.desc)
 
 
-    def get_values(self,filt=None,idval=None,reshape=RESHAPE_DEFAULT,reset=False):
+    def get_values(self,filt=None,idval=None,reset=False):
         try:
             if reset:
                 raise Exception('forced reload')
@@ -137,14 +136,14 @@ class GdxSymb:
                     raise Exception('Element "%s" not found' % str(filt))
                 ret = self.values.xs(filt,axis=iax)
         except:
-            ret = self.gdx.query(self.name,reshape=reshape,filt=filt,idval=idval)
+            ret = self.gdx.query(self.name,filt=filt,idval=idval)
             self.values = ret
             self.filtered = (filt != None)
 
         return ret
 
-    def __call__(self,filt=None,idval=None,reset=False,reshape=RESHAPE_DEFAULT):
-        return self.get_values(filt=filt,idval=idval,reset=reset,reshape=reshape)
+    def __call__(self,filt=None,idval=None,reset=False):
+        return self.get_values(filt=filt,idval=idval,reset=reset)
 
 
 class GdxFile():
@@ -181,7 +180,8 @@ class GdxFile():
         assert r, '%d is not a valid symbol number' % j
         r, records, userinfo, description = gdxcc.gdxSymbolInfoX(h, j)
         assert r, '%d is not a valid symbol number' % j
-        return {'name':name, 'stype':stype, 'desc':description, 'dim':dims}
+        r, domains = gdxcc.gdxSymbolGetDomainX(h, j)
+        return {'name':name, 'stype':stype, 'desc':description, 'dim':dims, 'dom': domains}
 
 
     def get_symbols_list(self):
@@ -205,9 +205,9 @@ class GdxFile():
         return ret
 
 
-    def query(self, name, reshape=RESHAPE_DEFAULT, filt=None, idval=None, idxlower=True):
+    def query(self, name, filt=None, idval=None, idxlower=True):
         '''
-        Query attribute `idval` from symbol `name`, and return a data structure shaped according to `reshape`.
+        Query attribute `idval` from symbol `name`, and return a Pandas data structure.
         '''
         gdx_handle = self.gdx_handle
         ret, symNr = gdxcc.gdxFindSymbol(gdx_handle, name)
@@ -223,45 +223,56 @@ class GdxFile():
             else:
                 idval = gdxcc.GMS_VAL_LEVEL
         ifilt = None
-        vtable = [None]*(nrRecs)
+        istar = 1
+        dom = sinfo['dom']
+        for idom, adom in enumerate(dom):
+            if adom == '*':
+                dom[idom] = f's{istar}'
+                istar += 1
+        dom.append(name)
+        vtable = np.zeros(nrRecs, dtype = list(zip(dom, [object]*dim + ['f8',])))
         rcounter = 0
         rowtype = None
         if filt != None:
-            if isinstance(filt,list):
-                filt = '^({0})$'.format('|'.join([re.escape(x) for x in filt]))
-            if isinstance(filt, str):
-                filt_func = re.compile(filt, re.IGNORECASE).match
+            if ',' in filt:
+                
+                relist = [re.compile(f'^({x})$', re.IGNORECASE).match if x != '' else (lambda a: True) for x in filt.split(',')]
+                filt_func = lambda elems: np.all([m(e) is not None for m,e in zip(relist,elems)])
             else:
-                filt_func = filt
+                if isinstance(filt,list):
+                    filt = '^({0})$'.format('|'.join([re.escape(x) for x in filt]))
+                if isinstance(filt, str):
+                    filt_func = re.compile(filt, re.IGNORECASE).match
+                else:
+                    filt_func = filt
         for i in range(nrRecs):
-            vrow = [None]*(dim+1)
             ret, elements, values, afdim = gdxcc.gdxDataReadStr(gdx_handle)
             assert ret, get_last_error('gdxDataReadStr', gdx_handle)
             if (filt != None):
-                match_filt = False
-                for e in elements:
-                    m = filt_func(e)
-                    if m != None:
-                        match_filt = True
-                        break
-                if not match_filt:
+                if not any(map(filt_func, elements)):
                     continue
             d = -1
-            for d in range(dim):
+            for idom in range(dim):
                 try:
-                    vrow[d] = int(elements[d])
+                    vtable[rcounter][idom] = int(elements[idom])
                 except:
-                    vrow[d] = elements[d].lower() if idxlower else elements[d]
-            vrow[d+1] = values[idval]
-            vtable[rcounter] = vrow
+                    vtable[rcounter][idom] = elements[idom].lower() if idxlower else elements[idom]
+            vtable[rcounter][idom+1] = values[idval]
             rcounter += 1
         gdxcc.gdxDataReadDone(gdx_handle)
-        cols = ['s%d' % x for x in range(dim)]+['val',]
-        df = pd.DataFrame(vtable[:rcounter],columns=cols)
+        df = pd.DataFrame(vtable[:rcounter]).set_index(dom[:-1])  #,columns=cols)
+        name_specs = []
+        if dim > 1:
+            levs2drop = []
+            for ilev, lev in enumerate(df.index.levels):
+                if len(lev) == 1:
+                    levs2drop.append(ilev)
+                    name_specs.append(lev[0])
+            df = df.droplevel(levs2drop, axis=0)
+            if len(name_specs) > 0:
+                df.set_axis([f'{name} [{",".join(name_specs)}]',], axis=1, inplace=True)
+        df = df.iloc[:,0]
         logger.debug("%d / %d records read from <%s>" % (rcounter, nrRecs, self.internal_filename))
-        if symType == gdxcc.GMS_DT_SET:
-            reshape = RESHAPE_SERIES
-        df = dfreshape(df, reshape)
         if symType == gdxcc.GMS_DT_SET:
             df = df.index
         self.data = df
@@ -352,24 +363,8 @@ def expandlist(l,auxl=None):
     return ret
 
 
-def dfreshape(df, reshape):
-    ncols = len(df.columns)
-    vcol = df.columns.values[-1]
-    if ncols == 1:
-        return df[vcol][0]
-    idxcols = list(df.columns.values)[:-1]
-    if (reshape > RESHAPE_SERIES) and (ncols > 2):
-        df = df.pivot_table(vcol, index=idxcols[:-1],
-                                columns=idxcols[-1])
-        if (reshape == RESHAPE_PANEL) and (ncols > 3):
-            raise NotImplementedError('Panels are obsolete')
-    elif reshape >= RESHAPE_SERIES:
-        df = df.set_index(idxcols)[vcol]
-    return df
-
-
 def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
-          remove_underscore=True, clear=True, single=True, reshape=RESHAPE_DEFAULT,
+          remove_underscore=True, clear=True, single=True,
           idxlower=True, returnfirst=False, lowercase=True, lamb=None, verbose=True,
           idval=None):
       """
@@ -424,7 +419,7 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                     else:
                         gid = glabels[ig]
                 try:
-                    sdata_curr = gdxobjs[ig].query(s,filt=filt,reshape=reshape,idval=idval,idxlower=idxlower)
+                    sdata_curr = gdxobjs[ig].query(s,filt=filt,idval=idval,idxlower=idxlower)
                     sdata[gid] = sdata_curr
                 except Exception as e:
                     #traceback.print_exc()
@@ -437,28 +432,11 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
             if nvg>1:
                 if isinstance(sdata_curr, pd.Index):
                     df = pd.concat({gid: pd.Series(1, x) for gid, x in sdata.items()}, keys=validgdxs).index
-                elif (reshape==RESHAPE_PANEL):
-                    raise NotImplementedError('Panels are obsolete')
                 else:
                     if isinstance(sdata_curr, float):
                         df = pd.Series(sdata)[validgdxs]
                     else:
                         df = pd.concat(sdata, keys=validgdxs)
-                    if reshape==RESHAPE_NONE:
-                        df.reset_index(inplace=True)
-                        col2drop = df.columns[1]
-                        df.drop(col2drop, axis=1, inplace=True)
-                        ncols = len(df.columns)
-                        df.columns = ['s{}'.format(x) for x in range(ncols-1)] + ['val',]
-                    elif reshape>=RESHAPE_SERIES:
-                        for i in range(len(df.index.levels)):
-                            df.index.levels[i].name = 's{}'.format(i)
-                        if reshape>=RESHAPE_FRAME:
-                            try:
-                                df.columns.name = 's{}'.format(i+1)
-                                df = df.stack().unstack(0)
-                            except:
-                                df = df.unstack(0)
             else:
                 df = sdata_curr
             try:
@@ -486,17 +464,17 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
                 else:
                     __builtins__[s] = svar
 
-
-            logprint = logger.info if verbose else logger.debug
-            if isinstance(svar, pd.DataFrame):
-                logprint('Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
-                colwidth = np.max([len(str(svar.columns[i])) for i in range(len(svar.columns))])
-                logprint('Columns: {}'.format('\n         '.join([('{:<%d} = {} ... {}'%colwidth).format(
-                    str(svar.columns[i]), svar.iloc[0,i], svar.iloc[-1,i]) for i in range(len(svar.columns))])))
-            elif isinstance(svar, pd.Series):
-                logprint('Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
-            else:
-                logprint(svar)
+            if verbose:
+                logprint = logger.info if verbose else logger.debug
+                if isinstance(svar, pd.DataFrame):
+                    logprint('Rows   : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
+                    colwidth = np.max([len(str(svar.columns[i])) for i in range(len(svar.columns))])
+                    logprint('Columns: {}'.format('\n         '.join([('{:<%d} = {} ... {}'%colwidth).format(
+                        str(svar.columns[i]), svar.iloc[0,i], svar.iloc[-1,i]) for i in range(len(svar.columns))])))
+                elif isinstance(svar, pd.Series):
+                    logprint('Index  : {} ... {}'.format(str(svar.index[0]), str(svar.index[-1])))
+                else:
+                    logprint(svar)
             if returnfirst:
                 svar2ret.append(svar)
       if returnfirst:
@@ -505,8 +483,8 @@ def gload(smatch, gpaths=None, glabels=None, filt=None, reducel=False,
           return svar2ret
 
 
-def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True,reshape=True,returnfirst=False):
-    gload(slist,glist,gdxlabels,filt,reducel,remove_underscore,clear,single,reshape,returnfirst)
+def loadsymbols(slist,glist,gdxlabels=None,filt=None,reducel=False,remove_underscore=True,clear=True,single=True,returnfirst=False):
+    gload(slist,glist,gdxlabels,filt,reducel,remove_underscore,clear,single,returnfirst)
 
 # Main initialization code
 #load_gams_binding()
