@@ -13,6 +13,7 @@ from distutils import spawn
 import builtins
 import inspect
 import logging
+from functools import partial
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('gdxpy')
@@ -85,6 +86,18 @@ def print_traceback(e):
     traceback.print_exc()
     return
 
+
+def filt_func_listlist(elems, alistlist):
+    found = False
+    for alist in alistlist:
+        found = True
+        for x, y in zip(elems, alist):
+            if not y(x):
+                found = False
+                break
+        if found:
+            break
+    return found
 
 
 def get_last_error(context, gdx_handle):
@@ -243,16 +256,25 @@ class GdxFile():
                 filt_func = lambda elems: np.all([m(e) is not None for m,e in zip(relist,elems)])
             else:
                 if isinstance(filt,list):
-                    filt = '^({0})$'.format('|'.join([re.escape(x) for x in filt]))
-                if isinstance(filt, str):
-                    filt_func = re.compile(filt, re.IGNORECASE).match
+                    if isinstance(filt[0], list):
+                        if isinstance(filt[0][0], str):
+                            for ilist, alist in enumerate(filt):
+                                filt[ilist] = [re.compile(x, re.IGNORECASE).match for x in alist]
+                        filt_func = partial(filt_func_listlist, alistlist=filt)
+                    else:
+                        filt = '^({0})$'.format('|'.join([re.escape(x) for x in filt]))
+                        filt_rematch = re.compile(filt, re.IGNORECASE).match
+                        filt_func = lambda elems: any(map(filt_rematch, elems))
+                elif isinstance(filt, str):
+                    filt_rematch = re.compile(filt, re.IGNORECASE).match
+                    filt_func = lambda elems: any(map(filt_rematch, elems))
                 else:
                     filt_func = filt
         for i in range(nrRecs):
             ret, elements, values, afdim = gdxcc.gdxDataReadStr(gdx_handle)
             assert ret, get_last_error('gdxDataReadStr', gdx_handle)
             if (filt != None):
-                if not any(map(filt_func, elements)):
+                if not filt_func(elements):
                     continue
             d = -1
             for idom in range(dim):
